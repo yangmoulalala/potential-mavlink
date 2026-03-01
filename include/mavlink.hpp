@@ -42,8 +42,7 @@ namespace constants
     constexpr float  MAX_BULLET_SPD     = 30.0f;
     constexpr int    TEAM_RED           = 0;
     constexpr int    TEAM_BLUE          = 1;
-    constexpr int    TIMER_PERIOD_MS    = 10;     // 定时器周期 (Ms)
-    constexpr int    PRINT_INTERVAL     = 100;    // IMU 打印频率控制
+    constexpr int    TIMER_PERIOD_MS    = 100;     // 定时器周期 (Ms)
 }  // namespace constants
 
 
@@ -65,7 +64,6 @@ public:
     sensor_msgs::msg::Imu imu_data;
     geometry_msgs::msg::Point target_point;
     
-    void send_nav_goal(double x, double y, double theta);
 
     int   team_color_request        = constants::TEAM_RED;
     float bullet_speed_request      = constants::DEFAULT_BULLET_SPD;
@@ -91,6 +89,7 @@ private:
     rm_interfaces::msg::Armors               armors_;
     rm_interfaces::msg::GimbalCmd            gimbal_cmd_;
     std::optional<rm_interfaces::msg::Armor> best_armor_;
+    geometry_msgs::msg::Twist                cmd_vel_;
 
     int   team_color_       = constants::TEAM_RED;
     float bullet_speed_     = constants::DEFAULT_BULLET_SPD;
@@ -119,6 +118,7 @@ private:
     // =========================================================================
     void select_best_armor();
     void send_gimbal_cmd();
+    void send_cmd_vel();
     void set_color();
     void set_bullet_speed();
 
@@ -127,6 +127,8 @@ private:
     // =========================================================================
     void publish_imu();
     void publish_tf();
+    void publish_nav_goal();
+
 
     // =========================================================================
     // 工具函数

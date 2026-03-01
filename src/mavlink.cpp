@@ -114,23 +114,8 @@ void MavLink::gimbal_callback(const rm_interfaces::msg::GimbalCmd::SharedPtr msg
 
 void MavLink::cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
-    if (!serial_is_init) return;
+    cmd_vel_ = *msg;
 
-    mavlink_message_t mav_msg;
-    uint8_t buf[128];
-
-    // 将 Twist 消息映射到 MAVLink 字段
-    // 假设：linear.x (前向), linear.y (横移)
-    mavlink_msg_nav_cmd_vel_pack(1, 200, &mav_msg,
-                                 msg->linear.x, 
-                                 msg->linear.y);
-
-    uint16_t len = mavlink_msg_to_send_buffer(buf, &mav_msg);
-    try {
-        ros_ser.write(buf, len);
-    } catch (const std::exception& e) {
-        RCLCPP_ERROR(this->get_logger(), "Serial write cmd_vel error: %s", e.what());
-    }
 }
 
 // =============================================================================
@@ -140,7 +125,8 @@ void MavLink::timer_callback()
 {
     if (serial_is_init) {
         try {
-            send_gimbal_cmd();
+            // send_gimbal_cmd();
+            send_cmd_vel();
         } catch (...) {
             RCLCPP_ERROR(get_logger(), "Error in uart process, closing serial.");
             ros_ser.close();
@@ -150,8 +136,9 @@ void MavLink::timer_callback()
 
     set_color();
     set_bullet_speed();
-    // publish_imu();
-    // publish_tf();
+    publish_imu();
+    publish_tf();
+    publish_nav_goal();
 }
 
 // =============================================================================
@@ -224,8 +211,31 @@ void MavLink::send_gimbal_cmd()
     uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
     ros_ser.write(buf, len);
 
-    (void)locked;  // 预留：locked 后续可通过 MAVLink 扩展字段传出
 }
+void MavLink::send_cmd_vel() {
+    if (!serial_is_init || !ros_ser.isOpen()) return;
+
+    mavlink_message_t mav_msg;
+    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+    uint16_t len = mavlink_msg_nav_cmd_vel_pack(1, 200, &mav_msg,
+                                               cmd_vel_.linear.x, 
+                                               cmd_vel_.linear.y);
+
+    try {
+        uint16_t len = mavlink_msg_to_send_buffer(buf, &mav_msg); 
+        size_t bytes_written = ros_ser.write(buf, len);
+        if (bytes_written != len) {
+            RCLCPP_WARN(this->get_logger(), "Wait! Send mismatch: req %d, sent %ld", len, bytes_written);
+        } else {
+            // 只有这里打印才说明数据交给了驱动层
+            RCLCPP_INFO(this->get_logger(), "Sent %ld bytes to Serial", bytes_written);
+        }
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), "Write error: %s", e.what());
+        serial_is_init = false;
+    }
+}
+
 
 /**
  * @brief 若队伍颜色请求与当前值不同，则异步向识别节点发送切换指令。
@@ -306,7 +316,7 @@ void MavLink::publish_tf()
     tf_broadcaster_->sendTransform(t);
 }
 
-void MavLink::send_nav_goal(double x, double y, double theta)
+void MavLink::publish_nav_goal()
 {
     if (!nav_client_->wait_for_action_server(std::chrono::seconds(2))) {
         RCLCPP_ERROR(this->get_logger(), "Nav2 Action server not available");
@@ -317,16 +327,14 @@ void MavLink::send_nav_goal(double x, double y, double theta)
     goal_msg.pose.header.frame_id = "map";
     goal_msg.pose.header.stamp = this->now();
     
-    goal_msg.pose.pose.position.x = x;
-    goal_msg.pose.pose.position.y = y;
+    goal_msg.pose.pose.position.x = target_point.x;
+    goal_msg.pose.pose.position.y = target_point.y;
 
-    // 四元数转换 (简单处理 Z 轴旋转)
-    tf2::Quaternion q;
-    q.setRPY(0, 0, theta);
-    goal_msg.pose.pose.orientation.x = q.x();
-    goal_msg.pose.pose.orientation.y = q.y();
-    goal_msg.pose.pose.orientation.z = q.z();
-    goal_msg.pose.pose.orientation.w = q.w();
+
+    goal_msg.pose.pose.orientation.x = 0;
+    goal_msg.pose.pose.orientation.y = 0;
+    goal_msg.pose.pose.orientation.z = 0;
+    goal_msg.pose.pose.orientation.w = 1;
 
     auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
     send_goal_options.goal_response_callback = std::bind(&MavLink::nav_goal_response_callback, this, _1);

@@ -21,6 +21,7 @@ find_package(nav2_msgs REQUIRED)
 
 # 包含头文件
 include_directories(
+  src
   include
 )
 
