@@ -54,6 +54,14 @@ static void handle_referee_message(MavLink& node, const mavlink_message_t& msg)
     }
 }
 
+static void handle_target_pose_message(MavLink& node, const mavlink_message_t& msg)
+{
+    mavlink_referee_t ref;
+    mavlink_msg_referee_decode(&msg, &ref);
+
+}
+
+
 /**
  * @brief 消费串口缓冲区，逐字节送入 MAVLink 解析器。
  */
@@ -81,7 +89,9 @@ static void process_serial(MavLink& node, int& print_count)
             case MAVLINK_MSG_ID_referee:
                 handle_referee_message(node, mav_msg);
                 break;
-            
+            case MAVLINK_MSG_ID_target_pose:
+                handle_target_pose_message(node, mav_msg);
+                break;
             default:
                 RCLCPP_DEBUG(node.get_logger(),
                              "Unknown MAVLink msg id: %d", mav_msg.msgid);
@@ -127,6 +137,8 @@ int main(int argc, char* argv[])
             node->ros_ser.close();
             node->serial_is_init = false;
         }
+        
+        std::this_thread::sleep_for(std::chrono::microseconds(1000));
     }
 
     rclcpp::shutdown();

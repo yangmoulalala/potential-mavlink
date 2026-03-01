@@ -5,7 +5,9 @@
 #include <std_msgs/msg/string.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
-
+#include <rclcpp_action/rclcpp_action.hpp>
+#include <nav2_msgs/action/navigate_to_pose.hpp>
+#include <geometry_msgs/msg/twist.hpp>
 // ─── TF2 ──────────────────────────────────────────────────────────────────────
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -40,7 +42,7 @@ namespace constants
     constexpr float  MAX_BULLET_SPD     = 30.0f;
     constexpr int    TEAM_RED           = 0;
     constexpr int    TEAM_BLUE          = 1;
-    constexpr int    TIMER_PERIOD_US    = 10;     // 定时器周期 (μs)
+    constexpr int    TIMER_PERIOD_MS    = 10;     // 定时器周期 (Ms)
     constexpr int    PRINT_INTERVAL     = 100;    // IMU 打印频率控制
 }  // namespace constants
 
@@ -49,6 +51,9 @@ namespace constants
 class MavLink : public rclcpp::Node
 {
 public:
+    using NavigateToPose = nav2_msgs::action::NavigateToPose;
+    using GoalHandleNav = rclcpp_action::ClientGoalHandle<NavigateToPose>;
+
     explicit MavLink();
 
     // ── 串口管理（main 线程访问） ──────────────────────────────────────────────
@@ -58,6 +63,9 @@ public:
     serial::Serial ros_ser;
     bool   serial_is_init   = false;
     sensor_msgs::msg::Imu imu_data;
+    geometry_msgs::msg::Point target_point;
+    
+    void send_nav_goal(double x, double y, double theta);
 
     int   team_color_request        = constants::TEAM_RED;
     float bullet_speed_request      = constants::DEFAULT_BULLET_SPD;
@@ -73,6 +81,8 @@ private:
     rclcpp::Client<rm_interfaces::srv::SetMode>::SharedPtr         set_color_client_;
     rclcpp::TimerBase::SharedPtr                                   timer_;
     std::shared_ptr<tf2_ros::TransformBroadcaster>                 tf_broadcaster_;
+    rclcpp_action::Client<NavigateToPose>::SharedPtr nav_client_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
 
     // =========================================================================
     // 内部状态
@@ -98,6 +108,11 @@ private:
     void gimbal_callback(const rm_interfaces::msg::GimbalCmd::SharedPtr msg);
     void timer_callback();
     void set_color_callback(rclcpp::Client<rm_interfaces::srv::SetMode>::SharedFuture response);
+    
+    void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
+    void nav_goal_response_callback(const GoalHandleNav::SharedPtr& goal_handle);
+    // void nav_feedback_callback(GoalHandleNav::SharedPtr, const std::shared_ptr<const NavigateToPose::Feedback> feedback);
+    // void nav_result_callback(const GoalHandleNav::WrappedResult& result);
 
     // =========================================================================
     // 业务逻辑
@@ -116,6 +131,6 @@ private:
     // =========================================================================
     // 工具函数
     // =========================================================================
-    void wait_for_detector_service();
+    // void wait_for_detector_service();
     std::string to_hex_string(const std::string& data);
 };

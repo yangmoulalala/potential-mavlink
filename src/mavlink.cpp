@@ -6,7 +6,7 @@ using std::placeholders::_1;
 // 构造函数
 // =============================================================================
 MavLink::MavLink()
-    : Node("MavTest_1"),
+    : Node("MavLink"),
       last_gimbal_time_(this->now()),
       last_set_color_time_(this->now()),
       tf_broadcaster_(std::make_shared<tf2_ros::TransformBroadcaster>(this))
@@ -29,21 +29,24 @@ MavLink::MavLink()
         "/armor_solver/cmd_gimbal",
         rclcpp::SensorDataQoS(),
         std::bind(&MavLink::gimbal_callback, this, _1));
+    cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+        "/red_standard_robot1/cmd_vel", 10, std::bind(&MavLink::cmd_vel_callback, this, _1));
 
     // ── 发布 ─────────────────────────────────────────────────────────────────
     imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(
         "/serial_dirver/imu_raw", rclcpp::SensorDataQoS());
+    nav_client_ = rclcpp_action::create_client<NavigateToPose>(this, "/red_standard_robot1/navigate_to_pose");
 
     // ── 服务客户端 ────────────────────────────────────────────────────────────
     set_color_client_ = this->create_client<rm_interfaces::srv::SetMode>(
         "/armor_detector/set_mode");
 
     // ── 等待识别服务就绪 ──────────────────────────────────────────────────────
-    wait_for_detector_service();
+    // wait_for_detector_service();
 
     // ── 定时器（100 Hz） ──────────────────────────────────────────────────────
     timer_ = this->create_wall_timer(
-        std::chrono::microseconds(constants::TIMER_PERIOD_US),
+        std::chrono::milliseconds(constants::TIMER_PERIOD_MS),
         std::bind(&MavLink::timer_callback, this));
 }
 
@@ -76,19 +79,19 @@ void MavLink::serial_init()
     }
 }
 
-void MavLink::wait_for_detector_service()
-{
-    while (!set_color_client_->wait_for_service(std::chrono::seconds(1))) {
-        if (!rclcpp::ok()) {
-            RCLCPP_ERROR(get_logger(), "Interrupted while waiting for detector service.");
-            return;
-        }
-        RCLCPP_INFO(get_logger(), "Waiting for rm_vision to start...");
-        if (serial_is_init) {
-            ros_ser.read(ros_ser.available());  // 防止串口缓冲区溢出
-        }
-    }
-}
+// void MavLink::wait_for_detector_service()
+// {
+//     while (!set_color_client_->wait_for_service(std::chrono::seconds(1))) {
+//         if (!rclcpp::ok()) {
+//             RCLCPP_ERROR(get_logger(), "Interrupted while waiting for detector service.");
+//             return;
+//         }
+//         RCLCPP_INFO(get_logger(), "Waiting for rm_vision to start...");
+//         if (serial_is_init) {
+//             ros_ser.read(ros_ser.available());  // 防止串口缓冲区溢出
+//         }
+//     }
+// }
 
 // =============================================================================
 // 订阅回调
@@ -109,6 +112,27 @@ void MavLink::gimbal_callback(const rm_interfaces::msg::GimbalCmd::SharedPtr msg
     gimbal_cmd_       = *msg;
 }
 
+void MavLink::cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
+{
+    if (!serial_is_init) return;
+
+    mavlink_message_t mav_msg;
+    uint8_t buf[128];
+
+    // 将 Twist 消息映射到 MAVLink 字段
+    // 假设：linear.x (前向), linear.y (横移)
+    mavlink_msg_nav_cmd_vel_pack(1, 200, &mav_msg,
+                                 msg->linear.x, 
+                                 msg->linear.y);
+
+    uint16_t len = mavlink_msg_to_send_buffer(buf, &mav_msg);
+    try {
+        ros_ser.write(buf, len);
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), "Serial write cmd_vel error: %s", e.what());
+    }
+}
+
 // =============================================================================
 // 定时器主回调（100 Hz）
 // =============================================================================
@@ -126,8 +150,8 @@ void MavLink::timer_callback()
 
     set_color();
     set_bullet_speed();
-    publish_imu();
-    publish_tf();
+    // publish_imu();
+    // publish_tf();
 }
 
 // =============================================================================
@@ -280,6 +304,41 @@ void MavLink::publish_tf()
     t.transform.rotation.w = imu_data.orientation.w;
 
     tf_broadcaster_->sendTransform(t);
+}
+
+void MavLink::send_nav_goal(double x, double y, double theta)
+{
+    if (!nav_client_->wait_for_action_server(std::chrono::seconds(2))) {
+        RCLCPP_ERROR(this->get_logger(), "Nav2 Action server not available");
+        return;
+    }
+
+    auto goal_msg = NavigateToPose::Goal();
+    goal_msg.pose.header.frame_id = "map";
+    goal_msg.pose.header.stamp = this->now();
+    
+    goal_msg.pose.pose.position.x = x;
+    goal_msg.pose.pose.position.y = y;
+
+    // 四元数转换 (简单处理 Z 轴旋转)
+    tf2::Quaternion q;
+    q.setRPY(0, 0, theta);
+    goal_msg.pose.pose.orientation.x = q.x();
+    goal_msg.pose.pose.orientation.y = q.y();
+    goal_msg.pose.pose.orientation.z = q.z();
+    goal_msg.pose.pose.orientation.w = q.w();
+
+    auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
+    send_goal_options.goal_response_callback = std::bind(&MavLink::nav_goal_response_callback, this, _1);
+    // send_goal_options.feedback_callback = std::bind(&MavLink::nav_feedback_callback, this, std::placeholders::_1,std::placeholders::_2);
+    // send_goal_options.result_callback = std::bind(&MavLink::nav_result_callback, this, _1);
+
+    nav_client_->async_send_goal(goal_msg, send_goal_options);
+}
+
+// 对应的 Action 回调函数实现 (略，可根据需要打印日志)
+void MavLink::nav_goal_response_callback(const GoalHandleNav::SharedPtr& goal_handle) {
+    if (!goal_handle) { RCLCPP_ERROR(get_logger(), "Goal rejected"); }
 }
 
 // =============================================================================

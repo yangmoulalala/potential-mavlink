@@ -16,7 +16,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(rm_interfaces REQUIRED)
-
+find_package(nav2_msgs REQUIRED)
 
 
 # 包含头文件
@@ -38,6 +38,7 @@ ament_target_dependencies(serial_mav_node
   sensor_msgs
   geometry_msgs
   rm_interfaces
+  nav2_msgs
 )
 
 # 安装可执行程序
