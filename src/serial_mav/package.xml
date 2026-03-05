@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>serial_mav</name>
+  <version>0.0.1</version>
+  <description>ROS2 package for MAVLink serial communication and custom messages.</description>
+
+  <maintainer email="your_email@example.com">your_name</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- Build tools -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>rclcpp_components</depend>
+  <depend>sensor_msgs</depend>
+  <depend>serial</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>rm_interfaces</depend>
+  <depend>nav2_msgs</depend>
+
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
