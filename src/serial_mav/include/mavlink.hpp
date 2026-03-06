@@ -15,10 +15,8 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 
 // ─── 自定义消息 ───────────────────────────────────────────────────────────────
-#include "rm_interfaces/msg/armors.hpp"
 #include "rm_interfaces/msg/target.hpp"
 #include "rm_interfaces/msg/gimbal_cmd.hpp"
-#include "rm_interfaces/srv/set_mode.hpp"
 
 // ─── 串口 & MAVLink ───────────────────────────────────────────────────────────
 #include "serial/serial.h"
@@ -72,24 +70,18 @@ private:
     // =========================================================================
     // ROS2 通信句柄
     // =========================================================================
-    rclcpp::Subscription<rm_interfaces::msg::Target>::SharedPtr    target_sub_;
-    rclcpp::Subscription<rm_interfaces::msg::Armors>::SharedPtr    armors_sub_;
     rclcpp::Subscription<rm_interfaces::msg::GimbalCmd>::SharedPtr gimbal_sub_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr            imu_pub_;
-    rclcpp::Client<rm_interfaces::srv::SetMode>::SharedPtr         set_color_client_;
     rclcpp::TimerBase::SharedPtr                                   timer_;
     std::shared_ptr<tf2_ros::TransformBroadcaster>                 tf_broadcaster_;
     rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SharedPtr               nav_client_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr     cmd_vel_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr       odometry_sub_;
- 
+
     // =========================================================================
     // 内部状态
     // =========================================================================
-    rm_interfaces::msg::Target               target_;
-    rm_interfaces::msg::Armors               armors_;
     rm_interfaces::msg::GimbalCmd            gimbal_cmd_;
-    std::optional<rm_interfaces::msg::Armor> best_armor_;
     geometry_msgs::msg::Twist                cmd_vel_;
     nav_msgs::msg::Odometry                  odometry_;
 
@@ -111,12 +103,9 @@ private:
     // =========================================================================
     // 回调函数
     // =========================================================================
-    void target_callback(const rm_interfaces::msg::Target::SharedPtr msg);
-    void armors_callback(const rm_interfaces::msg::Armors::SharedPtr msg);
     void gimbal_callback(const rm_interfaces::msg::GimbalCmd::SharedPtr msg);
     void timer_callback();
-    void set_color_callback(rclcpp::Client<rm_interfaces::srv::SetMode>::SharedFuture response);
-    
+
     void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
     void nav_goal_response_callback(const rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr& goal_handle);//导航目标是否被接收
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg);
@@ -128,11 +117,11 @@ private:
     // =========================================================================
     void select_best_armor();
     void send_gimbal_cmd();
-    void send_cmd_vel();
-    void send_odometry();
-
     void set_color();
     void set_bullet_speed();
+
+    void send_cmd_vel();
+    void send_odometry();
 
     // =========================================================================
     // 发布接口
@@ -140,11 +129,4 @@ private:
     void publish_imu();
     void publish_tf();
     void publish_nav_goal();
-
-
-    // =========================================================================
-    // 工具函数
-    // =========================================================================
-    // void wait_for_detector_service();
-    std::string to_hex_string(const std::string& data);
 };

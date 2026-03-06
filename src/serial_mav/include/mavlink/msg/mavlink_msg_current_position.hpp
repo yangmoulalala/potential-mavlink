@@ -1,4 +1,4 @@
-// MESSAGE imu support class
+// MESSAGE current_position support class
 
 #pragma once
 
@@ -7,21 +7,21 @@ namespace msg {
 namespace msg {
 
 /**
- * @brief imu message
+ * @brief current_position message
  *
- * imu(c -> pc)
+ * current_position(pc -> c)
  */
-struct imu : mavlink::Message {
-    static constexpr msgid_t MSG_ID = 0;
+struct current_position : mavlink::Message {
+    static constexpr msgid_t MSG_ID = 5;
     static constexpr size_t LENGTH = 12;
     static constexpr size_t MIN_LENGTH = 12;
     static constexpr uint8_t CRC_EXTRA = 178;
-    static constexpr auto NAME = "imu";
+    static constexpr auto NAME = "current_position";
 
 
-    float yaw; /*< [deg] yaw(left is positive) */
-    float pitch; /*< [deg] pitch(up is positive) */
-    float roll; /*< [deg] roll(clockwise is positive) */
+    float x; /*< [m] x */
+    float y; /*< [m] y */
+    float yaw; /*< [deg] yaw */
 
 
     inline std::string get_name(void) const override
@@ -39,9 +39,9 @@ struct imu : mavlink::Message {
         std::stringstream ss;
 
         ss << NAME << ":" << std::endl;
+        ss << "  x: " << x << std::endl;
+        ss << "  y: " << y << std::endl;
         ss << "  yaw: " << yaw << std::endl;
-        ss << "  pitch: " << pitch << std::endl;
-        ss << "  roll: " << roll << std::endl;
 
         return ss.str();
     }
@@ -50,16 +50,16 @@ struct imu : mavlink::Message {
     {
         map.reset(MSG_ID, LENGTH);
 
-        map << yaw;                           // offset: 0
-        map << pitch;                         // offset: 4
-        map << roll;                          // offset: 8
+        map << x;                             // offset: 0
+        map << y;                             // offset: 4
+        map << yaw;                           // offset: 8
     }
 
     inline void deserialize(mavlink::MsgMap &map) override
     {
-        map >> yaw;                           // offset: 0
-        map >> pitch;                         // offset: 4
-        map >> roll;                          // offset: 8
+        map >> x;                             // offset: 0
+        map >> y;                             // offset: 4
+        map >> yaw;                           // offset: 8
     }
 };
 

@@ -15,18 +15,8 @@ MavLink::MavLink()
     serial_init();
 
     // ── 订阅 ─────────────────────────────────────────────────────────────────
-    target_sub_ = this->create_subscription<rm_interfaces::msg::Target>(
-        "/armor_solver/target",
-        rclcpp::SensorDataQoS(),
-        std::bind(&MavLink::target_callback, this, _1));
-
-    armors_sub_ = this->create_subscription<rm_interfaces::msg::Armors>(
-        "armor_detector/armors",
-        rclcpp::SensorDataQoS(),
-        std::bind(&MavLink::armors_callback, this, _1));
-
     gimbal_sub_ = this->create_subscription<rm_interfaces::msg::GimbalCmd>(
-        "/armor_solver/cmd_gimbal",
+        "/vision/gimbal_cmd",
         rclcpp::SensorDataQoS(),
         std::bind(&MavLink::gimbal_callback, this, _1));
     cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
@@ -38,10 +28,6 @@ MavLink::MavLink()
     imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(
         "/serial_dirver/imu_raw", rclcpp::SensorDataQoS());
     nav_client_ = rclcpp_action::create_client<nav2_msgs::action::NavigateToPose>(this, "/red_standard_robot1/navigate_to_pose");
-
-    // ── 服务客户端 ────────────────────────────────────────────────────────────
-    set_color_client_ = this->create_client<rm_interfaces::srv::SetMode>(
-        "/armor_detector/set_mode");
 
 
     // ── 定时器（100 Hz） ──────────────────────────────────────────────────────
@@ -83,16 +69,6 @@ void MavLink::serial_init()
 // =============================================================================
 // 订阅回调
 // =============================================================================
-void MavLink::target_callback(const rm_interfaces::msg::Target::SharedPtr msg)
-{
-    target_ = *msg;
-}
-
-void MavLink::armors_callback(const rm_interfaces::msg::Armors::SharedPtr msg)
-{
-    armors_ = *msg;
-}
-
 void MavLink::gimbal_callback(const rm_interfaces::msg::GimbalCmd::SharedPtr msg)
 {
     last_gimbal_time_ = this->now();
@@ -125,11 +101,12 @@ void MavLink::timer_callback()
         }
     }
 
-    set_color();
-    set_bullet_speed();
+    // set_color();
+    // set_bullet_speed();
 
     publish_imu();
     publish_tf();
+
     publish_nav_goal();
 }
 
@@ -138,66 +115,34 @@ void MavLink::timer_callback()
 // =============================================================================
 
 /**
- * @brief 从当前帧的装甲板列表中选出最接近跟踪目标的装甲板。
- */
-void MavLink::select_best_armor()
-{
-    best_armor_.reset();
-
-    if (armors_.armors.empty() || !target_.tracking) {
-        return;
-    }
-
-    double min_dist = std::numeric_limits<double>::max();
-    rm_interfaces::msg::Armor candidate;
-
-    for (const auto& armor : armors_.armors) {
-        const double dx = armor.pose.position.x - target_.position.x;
-        const double dy = armor.pose.position.y - target_.position.y;
-        const double dz = armor.pose.position.z - target_.position.z;
-        const double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
-
-        if (dist < min_dist) {
-            min_dist  = dist;
-            candidate = armor;
-        }
-    }
-
-    best_armor_ = candidate;
-
-    if (best_armor_.has_value()) {
-        RCLCPP_INFO(get_logger(), "Best armor z=%.3f", best_armor_->pose.position.z);
-    }
-}
-
-/**
  * @brief 打包 MAVLink 帧并通过串口发送云台控制指令。
  */
 void MavLink::send_gimbal_cmd()
 {
-    if (!serial_is_init || !ros_ser.isOpen()) return;
-
-    select_best_armor();
-
     uint8_t is_detected = 0;
     uint8_t locked      = (gimbal_cmd_.pitch != 0.0f && gimbal_cmd_.yaw != 0.0f) ? 1 : 0;
 
-    if (best_armor_.has_value()) {
-        is_detected    = 1;
-        last_cmd_yaw_  = gimbal_cmd_.yaw;
-        last_cmd_pitch_= gimbal_cmd_.pitch;
-        RCLCPP_INFO(get_logger(), "Target v_yaw=%.3f", target_.v_yaw);
-    } else {
-        // 保持上一帧指令，防止丢帧时云台抖动
+    // if (best_armor_.has_value()) {
+    //     is_detected    = 1;
+    //     last_cmd_yaw_  = gimbal_cmd_.yaw;
+    //     last_cmd_pitch_= gimbal_cmd_.pitch;
+    //     RCLCPP_INFO(get_logger(), "Target v_yaw=%.3f", target_.v_yaw);
+    // } else {
+    //     // 保持上一帧指令，防止丢帧时云台抖动
+    //     gimbal_cmd_.yaw   = last_cmd_yaw_;
+    //     gimbal_cmd_.pitch = last_cmd_pitch_;
+    // }
+
+    if (!gimbal_cmd_.control){
         gimbal_cmd_.yaw   = last_cmd_yaw_;
         gimbal_cmd_.pitch = last_cmd_pitch_;
     }
-
+    // RCLCPP_INFO(get_logger(), "gimbal_cmd_yaw=%.3f", gimbal_cmd_.yaw);
     mavlink_message_t msg;
     uint8_t buf[128];
 
     mavlink_msg_aim_pack(1, 200, &msg,
-                         is_detected,
+                         gimbal_cmd_.control,
                          gimbal_cmd_.fire_advice,
                          gimbal_cmd_.yaw,
                          gimbal_cmd_.pitch);
@@ -206,6 +151,7 @@ void MavLink::send_gimbal_cmd()
     ros_ser.write(buf, len);
 
 }
+
 void MavLink::send_cmd_vel() {
     if (!serial_is_init || !ros_ser.isOpen()) return;
 
@@ -260,59 +206,6 @@ void MavLink::send_odometry(){
 
 }
 
-/**
- * @brief 若队伍颜色请求与当前值不同，则异步向识别节点发送切换指令。
- *        使用 1 s 限流，避免服务端过载。
- */
-void MavLink::set_color()
-{
-    if (team_color_ == team_color_request) return;
-    if (this->now() - last_set_color_time_ < std::chrono::seconds(1)) return;
-
-    auto req = std::make_shared<rm_interfaces::srv::SetMode_Request>();
-
-    if (team_color_request == constants::TEAM_RED) {
-        req->mode = constants::TEAM_RED;
-    } else if (team_color_request == constants::TEAM_BLUE) {
-        req->mode = constants::TEAM_BLUE;
-    } else {
-        RCLCPP_ERROR(get_logger(), "Invalid team color: %d", team_color_request);
-        return;
-    }
-
-    RCLCPP_INFO(get_logger(), "Requesting color change to %d", team_color_request);
-    set_color_client_->async_send_request(
-        req, std::bind(&MavLink::set_color_callback, this, _1));
-    last_set_color_time_ = this->now();
-}
-
-void MavLink::set_color_callback(
-    rclcpp::Client<rm_interfaces::srv::SetMode>::SharedFuture response)
-{
-    if (response.get()->message == "0") {
-        team_color_ = team_color_request;
-        RCLCPP_WARN(get_logger(), "Team color switched to %d", team_color_);
-    }
-}
-
-/**
- * @brief 若弹速请求值发生变化，则通过参数服务器同步更新弹速。
- */
-void MavLink::set_bullet_speed()
-{
-    if (bullet_speed_ == bullet_speed_request) return;
-
-    const auto new_params = std::vector<rclcpp::Parameter>{
-        rclcpp::Parameter("/armor_solver.solver.bullet_speed", bullet_speed_request)
-    };
-
-    auto result = this->set_parameters_atomically(new_params);
-    if (result.successful) {
-        RCLCPP_INFO(get_logger(), "Bullet speed updated: %.1f -> %.1f",
-                    bullet_speed_, bullet_speed_request);
-        bullet_speed_ = bullet_speed_request;
-    }
-}
 
 // =============================================================================
 // 发布接口
@@ -410,19 +303,4 @@ void MavLink::nav_feedback_callback(
         "剩余距离: %.2f m, 已耗时: %d s", 
         feedback->distance_remaining, 
         feedback->navigation_time.sec); 
-}
-
-// =============================================================================
-// 工具函数
-// =============================================================================
-std::string MavLink::to_hex_string(const std::string& data)
-{
-    std::ostringstream ss;
-    ss << std::hex << std::uppercase;
-    for (unsigned char c : data) {
-        ss << std::setw(2) << std::setfill('0') << static_cast<int>(c) << ' ';
-    }
-    std::string result = ss.str();
-    if (!result.empty()) result.pop_back();
-    return result;
 }

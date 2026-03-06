@@ -1,14 +1,13 @@
 std_msgs/Header header
-bool tracking
-string id
-int32 armors_num
-geometry_msgs/Point position
-geometry_msgs/Vector3 velocity
+
+float64 x
+float64 vx
+float64 y
+float64 vy
+float64 z
+float64 vz
 float64 yaw
-float64 v_yaw
-float64 radius_1
-float64 radius_2
-float64 d_za
-float64 d_zc
-float64 yaw_diff
-float64 position_diff
+float64 vyaw
+float64 r
+float64 dr
+float64 dz
