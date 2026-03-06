@@ -101,6 +101,13 @@ private:
     rclcpp::Time last_gimbal_time_;
     rclcpp::Time last_set_color_time_;
 
+    // 用于保存上一次发送的目标点
+    geometry_msgs::msg::Point last_sent_target_;
+    // 用于跟踪当前的 Goal Handle
+    rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr current_goal_handle_;
+    // 上一次发送的时间戳
+    rclcpp::Time last_nav_send_time_{0, 0, RCL_ROS_TIME};
+
     // =========================================================================
     // 回调函数
     // =========================================================================
@@ -111,8 +118,10 @@ private:
     void set_color_callback(rclcpp::Client<rm_interfaces::srv::SetMode>::SharedFuture response);
     
     void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
-    void nav_goal_response_callback(const rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr& goal_handle);
+    void nav_goal_response_callback(const rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr& goal_handle);//导航目标是否被接收
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg);
+    void nav_feedback_callback(rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr,
+                            const std::shared_ptr<const nav2_msgs::action::NavigateToPose::Feedback> feedback);//导航状态进度
 
     // =========================================================================
     // 业务逻辑
@@ -120,6 +129,8 @@ private:
     void select_best_armor();
     void send_gimbal_cmd();
     void send_cmd_vel();
+    void send_odometry();
+
     void set_color();
     void set_bullet_speed();
 

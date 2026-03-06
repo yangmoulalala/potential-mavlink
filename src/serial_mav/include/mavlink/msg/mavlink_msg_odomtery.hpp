@@ -1,4 +1,4 @@
-// MESSAGE imu support class
+// MESSAGE odomtery support class
 
 #pragma once
 
@@ -7,21 +7,21 @@ namespace msg {
 namespace msg {
 
 /**
- * @brief imu message
+ * @brief odomtery message
  *
- * imu report(c board -> mini pc)
+ * current position and yaw(mini pc -> c)
  */
-struct imu : mavlink::Message {
-    static constexpr msgid_t MSG_ID = 0;
+struct odomtery : mavlink::Message {
+    static constexpr msgid_t MSG_ID = 22;
     static constexpr size_t LENGTH = 12;
     static constexpr size_t MIN_LENGTH = 12;
-    static constexpr uint8_t CRC_EXTRA = 178;
-    static constexpr auto NAME = "imu";
+    static constexpr uint8_t CRC_EXTRA = 187;
+    static constexpr auto NAME = "odomtery";
 
 
-    float yaw; /*< [deg] yaw */
-    float pitch; /*< [deg] pitch */
-    float roll; /*< [deg] roll */
+    float pos_x; /*< [m] x */
+    float pos_y; /*< [m] y */
+    float yaw; /*< [rad] yaw */
 
 
     inline std::string get_name(void) const override
@@ -39,9 +39,9 @@ struct imu : mavlink::Message {
         std::stringstream ss;
 
         ss << NAME << ":" << std::endl;
+        ss << "  pos_x: " << pos_x << std::endl;
+        ss << "  pos_y: " << pos_y << std::endl;
         ss << "  yaw: " << yaw << std::endl;
-        ss << "  pitch: " << pitch << std::endl;
-        ss << "  roll: " << roll << std::endl;
 
         return ss.str();
     }
@@ -50,16 +50,16 @@ struct imu : mavlink::Message {
     {
         map.reset(MSG_ID, LENGTH);
 
-        map << yaw;                           // offset: 0
-        map << pitch;                         // offset: 4
-        map << roll;                          // offset: 8
+        map << pos_x;                         // offset: 0
+        map << pos_y;                         // offset: 4
+        map << yaw;                           // offset: 8
     }
 
     inline void deserialize(mavlink::MsgMap &map) override
     {
-        map >> yaw;                           // offset: 0
-        map >> pitch;                         // offset: 4
-        map >> roll;                          // offset: 8
+        map >> pos_x;                         // offset: 0
+        map >> pos_y;                         // offset: 4
+        map >> yaw;                           // offset: 8
     }
 };
 

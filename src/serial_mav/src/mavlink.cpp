@@ -117,6 +117,7 @@ void MavLink::timer_callback()
         try {
             send_gimbal_cmd();
             send_cmd_vel();
+            send_odometry();
         } catch (...) {
             RCLCPP_ERROR(get_logger(), "Error in uart process, closing serial.");
             ros_ser.close();
@@ -126,6 +127,7 @@ void MavLink::timer_callback()
 
     set_color();
     set_bullet_speed();
+
     publish_imu();
     publish_tf();
     publish_nav_goal();
@@ -173,6 +175,8 @@ void MavLink::select_best_armor()
  */
 void MavLink::send_gimbal_cmd()
 {
+    if (!serial_is_init || !ros_ser.isOpen()) return;
+
     select_best_armor();
 
     uint8_t is_detected = 0;
@@ -222,7 +226,39 @@ void MavLink::send_cmd_vel() {
         serial_is_init = false;
     }
 }
+void MavLink::send_odometry(){
+    if (!serial_is_init || !ros_ser.isOpen()) return;
 
+    mavlink_message_t mav_msg;
+    uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+
+    //四元数获取yaw
+    static tf2::Quaternion q(
+    odometry_.pose.pose.orientation.x,
+    odometry_.pose.pose.orientation.y,
+    odometry_.pose.pose.orientation.z,
+    odometry_.pose.pose.orientation.w
+    );
+    static double roll, pitch, yaw;
+    tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+    u_int16_t len = mavlink_msg_odometry_pack(1,200, &mav_msg,
+                                            odometry_.pose.pose.position.x,
+                                            odometry_.pose.pose.position.y,
+                                            yaw);
+    
+    try {
+        uint16_t len = mavlink_msg_to_send_buffer(buf, &mav_msg); 
+        size_t bytes_written = ros_ser.write(buf, len);
+        if (bytes_written != len) {
+            RCLCPP_WARN(this->get_logger(), "Wait! Send mismatch: req %d, sent %ld", len, bytes_written);
+        } 
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), "Write error: %s", e.what());
+        serial_is_init = false;
+    }
+
+}
 
 /**
  * @brief 若队伍颜色请求与当前值不同，则异步向识别节点发送切换指令。
@@ -305,33 +341,75 @@ void MavLink::publish_tf()
 
 void MavLink::publish_nav_goal()
 {
-    if (!nav_client_->wait_for_action_server(std::chrono::seconds(2))) {
-        RCLCPP_ERROR(this->get_logger(), "Nav2 Action server not available");
+    // 1. 频率限制：例如每 500ms 最多发送一次请求，避免高频冲击 Action Server
+    auto now = this->now();
+    if ((now - last_nav_send_time_).seconds() < 0.5) {
         return;
     }
 
+    // 2. 距离阈值检查：如果目标点位移非常小，则不重复发送
+    double dx = target_point.x - last_sent_target_.x;
+    double dy = target_point.y - last_sent_target_.y;
+    double dist = std::sqrt(dx * dx + dy * dy);
+
+    // 如果距离变化小于 0.1 米，则认为目标没变，直接返回
+    if (dist < 0.1) {
+        return;
+    }
+
+    // 3. 检查服务器是否在线
+    if (!nav_client_->wait_for_action_server(std::chrono::milliseconds(100))) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "Nav2 Action server not available");
+        return;
+    }
+
+    // 4. 构建目标消息
     auto goal_msg = nav2_msgs::action::NavigateToPose::Goal();
     goal_msg.pose.header.frame_id = "map";
-    goal_msg.pose.header.stamp = this->now();
-    
-    goal_msg.pose.pose.position.x = target_point.x;
-    goal_msg.pose.pose.position.y = target_point.y;
+    goal_msg.pose.header.stamp = now;
+    goal_msg.pose.pose.position = target_point; // 直接赋值
+    goal_msg.pose.pose.orientation.w = 1.0;     // 默认方向
 
-
-    goal_msg.pose.pose.orientation.x = 0;
-    goal_msg.pose.pose.orientation.y = 0;
-    goal_msg.pose.pose.orientation.z = 0;
-    goal_msg.pose.pose.orientation.w = 1;
-
+    // 5. 设置回调
     auto send_goal_options = rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SendGoalOptions();
     send_goal_options.goal_response_callback = std::bind(&MavLink::nav_goal_response_callback, this, _1);
+    send_goal_options.feedback_callback = 
+        std::bind(&MavLink::nav_feedback_callback, this, std::placeholders::_1, std::placeholders::_2);
 
+    // 可选：添加完成回调来清理 handle
+    send_goal_options.result_callback = [this](const auto &) {
+        current_goal_handle_ = nullptr;
+    };
+
+    // 6. 发送异步目标
+    RCLCPP_INFO(get_logger(), "Sending new Nav2 goal: x=%.2f, y=%.2f", target_point.x, target_point.y);
     nav_client_->async_send_goal(goal_msg, send_goal_options);
+
+    // 7. 更新缓存状态
+    last_sent_target_ = target_point;
+    last_nav_send_time_ = now;
 }
 
-// 对应的 Action 回调函数实现 (略，可根据需要打印日志)
-void MavLink::nav_goal_response_callback(const rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr& goal_handle) {
-    if (!goal_handle) { RCLCPP_ERROR(get_logger(), "Goal rejected"); }
+// 导航action服务器是否接收到导航目标点
+void MavLink::nav_goal_response_callback(const rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr& goal_handle) 
+{
+    if (!goal_handle) {
+        RCLCPP_ERROR(get_logger(), "Goal was rejected by server");
+    } else {
+        current_goal_handle_ = goal_handle;
+        RCLCPP_INFO(get_logger(), "Goal accepted by server");
+    }
+}
+
+void MavLink::nav_feedback_callback(
+    rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr,
+    const std::shared_ptr<const nav2_msgs::action::NavigateToPose::Feedback> feedback)
+{
+    //导航状态日志
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+        "剩余距离: %.2f m, 已耗时: %d s", 
+        feedback->distance_remaining, 
+        feedback->navigation_time.sec); 
 }
 
 // =============================================================================
