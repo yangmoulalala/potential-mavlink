@@ -21,10 +21,7 @@
 
 // ─── 标准库 ───────────────────────────────────────────────────────────────────
 #include <memory>
-#include <optional>
 #include <string>
-#include <vector>
-#include <sstream>
 #include <iomanip>
 #include <cmath>
 #include <limits>

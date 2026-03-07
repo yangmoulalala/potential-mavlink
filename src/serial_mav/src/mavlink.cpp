@@ -29,10 +29,10 @@ MavLink::MavLink()
         "/serial_dirver/imu_raw", rclcpp::SensorDataQoS());
 
     referee_pub_ = this->create_publisher<rm_interfaces::msg::Referee>(
-        "/red_standard_robot1/game_progress_", 10);
+        "/red_standard_robot1/referee", 10);
     
     target_position_pub_ = this->create_publisher<geometry_msgs::msg::Point>(
-        "/red_standard_robot1/nav_target", 10);
+        "/red_standard_robot1/target_position", 10);
 
 
     // ── 定时器（100 Hz） ──────────────────────────────────────────────────────
