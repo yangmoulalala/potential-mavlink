@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.8)
 project(serial_mav)
 
-# C++ 标准
+# # C++ 标准
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD 20)
 endif()
+# set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 依赖
 find_package(ament_cmake REQUIRED)

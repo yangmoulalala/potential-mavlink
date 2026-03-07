@@ -8,7 +8,8 @@ find_package(std_msgs REQUIRED)
 # 告诉 ROS 2 根据你的 .msg 文件生成 C++ 和 Python 接口
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Target.msg"
-  "msg/GimbalCmd.msg"
+  "msg/Cboard.msg"
+  "msg/Referee.msg"
   DEPENDENCIES std_msgs
 )
 

@@ -2,11 +2,7 @@
 
 // ─── ROS2 核心 ────────────────────────────────────────────────────────────────
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/string.hpp>
 #include <sensor_msgs/msg/imu.hpp>
-#include <geometry_msgs/msg/transform_stamped.hpp>
-#include <rclcpp_action/rclcpp_action.hpp>
-#include <nav2_msgs/action/navigate_to_pose.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 // ─── TF2 ──────────────────────────────────────────────────────────────────────
@@ -16,7 +12,8 @@
 
 // ─── 自定义消息 ───────────────────────────────────────────────────────────────
 #include "rm_interfaces/msg/target.hpp"
-#include "rm_interfaces/msg/gimbal_cmd.hpp"
+#include "rm_interfaces/msg/cboard.hpp"
+#include "rm_interfaces/msg/referee.hpp"
 
 // ─── 串口 & MAVLink ───────────────────────────────────────────────────────────
 #include "serial/serial.h"
@@ -32,18 +29,10 @@
 #include <cmath>
 #include <limits>
 
-// ─── 常量定义 ─────────────────────────────────────────────────────────────────
-namespace constants
-{
-    constexpr double IMU_DISTANT        = 0.2;    // IMU 到云台中心距离 (m)
-    constexpr float  DEFAULT_BULLET_SPD = 20.0f;  // 默认弹速 (m/s)
-    constexpr float  MIN_BULLET_SPD     = 10.0f;
-    constexpr float  MAX_BULLET_SPD     = 30.0f;
-    constexpr int    TEAM_RED           = 0;
-    constexpr int    TEAM_BLUE          = 1;
-    constexpr int    TIMER_PERIOD_MS    = 10;     // 定时器周期 (Ms)
-}  // namespace constants
-
+namespace constants{
+    constexpr int TIMER_PERIOD_10MS = 10;  // 100 Hz
+    constexpr int TIMER_PERIOD_100MS = 100; //10Hz
+}
 
 // ─── 节点类 ───────────────────────────────────────────────────────────────────
 class MavLink : public rclcpp::Node
@@ -57,76 +46,73 @@ public:
     // ── 对外暴露的状态（main 线程读写） ─────────────────────────────────────
     serial::Serial ros_ser;
     bool   serial_is_init   = false;
-    sensor_msgs::msg::Imu imu_data;
-    geometry_msgs::msg::Point target_point;
-    
 
-    int   team_color_request        = constants::TEAM_RED;
-    float bullet_speed_request      = constants::DEFAULT_BULLET_SPD;
+    void parse_mavlink_msg(const mavlink_message_t& msg);
 
 private:
-
 
     // =========================================================================
     // ROS2 通信句柄
     // =========================================================================
-    rclcpp::Subscription<rm_interfaces::msg::GimbalCmd>::SharedPtr gimbal_sub_;
+    rclcpp::Subscription<rm_interfaces::msg::Cboard>::SharedPtr    gimbal_sub_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr            imu_pub_;
-    rclcpp::TimerBase::SharedPtr                                   timer_;
+    rclcpp::TimerBase::SharedPtr                                   timer_100hz_;
+    rclcpp::TimerBase::SharedPtr                                   timer_10hz_;
     std::shared_ptr<tf2_ros::TransformBroadcaster>                 tf_broadcaster_;
-    rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SharedPtr               nav_client_;
+
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr     cmd_vel_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr       odometry_sub_;
+    rclcpp::Publisher<rm_interfaces::msg::Referee>::SharedPtr       referee_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr         target_position_pub_;
 
     // =========================================================================
     // 内部状态
     // =========================================================================
-    rm_interfaces::msg::GimbalCmd            gimbal_cmd_;
+    sensor_msgs::msg::Imu imu_data_;
+    geometry_msgs::msg::Point target_point_;
+    rm_interfaces::msg::Referee referee_;
+
+    rm_interfaces::msg::Cboard               gimbal_cmd_;
     geometry_msgs::msg::Twist                cmd_vel_;
     nav_msgs::msg::Odometry                  odometry_;
 
-    int   team_color_       = constants::TEAM_RED;
-    float bullet_speed_     = constants::DEFAULT_BULLET_SPD;
     float last_cmd_yaw_     = 0.0f;
     float last_cmd_pitch_   = 0.0f;
+
 
     rclcpp::Time last_gimbal_time_;
     rclcpp::Time last_set_color_time_;
 
-    // 用于保存上一次发送的目标点
-    geometry_msgs::msg::Point last_sent_target_;
-    // 用于跟踪当前的 Goal Handle
-    rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr current_goal_handle_;
+
+
     // 上一次发送的时间戳
     rclcpp::Time last_nav_send_time_{0, 0, RCL_ROS_TIME};
 
     // =========================================================================
     // 回调函数
     // =========================================================================
-    void gimbal_callback(const rm_interfaces::msg::GimbalCmd::SharedPtr msg);
-    void timer_callback();
+    void timer_100hz_callback();
+    void timer_10hz_callback();
 
+    void gimbal_callback(const rm_interfaces::msg::Cboard::SharedPtr msg);
     void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
-    void nav_goal_response_callback(const rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr& goal_handle);//导航目标是否被接收
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg);
-    void nav_feedback_callback(rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr,
-                            const std::shared_ptr<const nav2_msgs::action::NavigateToPose::Feedback> feedback);//导航状态进度
 
     // =========================================================================
     // 业务逻辑
     // =========================================================================
-    void select_best_armor();
-    void send_gimbal_cmd();
-    void set_color();
-    void set_bullet_speed();
 
+    void send_gimbal_cmd();
     void send_cmd_vel();
     void send_odometry();
+
+    void send(const mavlink_message_t& msg);
 
     // =========================================================================
     // 发布接口
     // =========================================================================
     void publish_imu();
     void publish_tf();
-    void publish_nav_goal();
+    void publish_target_position();
+    void publish_referee(); 
 };
