@@ -17,7 +17,7 @@ static void serial_callback(MavLink& node)
     std::string serial_read = node.ros_ser.read(buf_len);
     for (char c : serial_read) {
         if (mavlink_parse_char(MAVLINK_COMM_0, c, &mav_msg, &mav_status)) {
-            node.prase_mavlink_msg(mav_msg);
+            node.parse_mavlink_msg(mav_msg);
         }
     }
 }
