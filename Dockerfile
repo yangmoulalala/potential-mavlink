@@ -12,8 +12,6 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -p https://github.com/zsh-users/zsh-syntax-highlighting && \
     chsh -s /bin/zsh
 
-CMD [ "/bin/zsh" ]
-
 # Install serial library (not available via rosdep in humble)
 RUN git clone https://github.com/ZhaoXiangBox/serial.git && \
     cd serial && \
@@ -32,20 +30,31 @@ RUN git clone https://github.com/yangmoulalala/mavlink_ws.git /root/mavlink_ws &
     colcon build --symlink-install
 
 
-# setup .zshrc
-RUN echo 'export TERM=xterm-256color\n\
-source ~/ros_ws/install/setup.zsh\n\
+# Append ROS environment to .zshrc (append to existing zsh config)
+RUN echo '\n# ROS 2 Environment\n\
+source /opt/ros/humble/setup.zsh\n\
+source /root/mavlink_ws/install/setup.zsh\n\
 eval "$(register-python-argcomplete3 ros2)"\n\
-eval "$(register-python-argcomplete3 colcon)"\n'\
->> /root/.zshrc
+eval "$(register-python-argcomplete3 colcon)"' >> /root/.zshrc
 
-# source entrypoint setup
-RUN sed --in-place --expression \
-      '$isource "/root/ros_ws/install/setup.bash"' \
-      /ros_entrypoint.sh
+# Also setup .bashrc for compatibility
+RUN echo '\n# ROS 2 Environment\n\
+source /opt/ros/humble/setup.bash\n\
+source /root/mavlink_ws/install/setup.bash' >> /root/.bashrc
+
+# Create a startup script that properly sources the workspace and runs the node
+RUN echo '#!/bin/bash\n\
+cd /root/mavlink_ws\n\
+source /opt/ros/humble/setup.bash\n\
+source install/setup.bash\n\
+exec ros2 run serial_mav serial_mav_node "$@"' > /root/start_serial_node.sh && \
+    chmod +x /root/start_serial_node.sh
+
+# Set zsh as default shell
+RUN usermod -s /bin/zsh root
 
 RUN rm -rf /var/lib/apt/lists/*
 
+# Use the standard ROS entrypoint and our custom startup script
 ENTRYPOINT ["/ros_entrypoint.sh"]
-
-CMD ["ros2 run serial_mav serial_mav_node"]
+CMD ["/root/start_serial_node.sh"]
