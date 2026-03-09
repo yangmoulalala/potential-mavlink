@@ -12,6 +12,8 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -p https://github.com/zsh-users/zsh-syntax-highlighting && \
     chsh -s /bin/zsh
 
+CMD [ "/bin/zsh" ]
+
 # Install serial library (not available via rosdep in humble)
 RUN git clone https://github.com/ZhaoXiangBox/serial.git && \
     cd serial && \
@@ -29,4 +31,21 @@ RUN git clone https://github.com/yangmoulalala/mavlink_ws.git /root/mavlink_ws &
     . /opt/ros/humble/setup.sh && \
     colcon build --symlink-install
 
-CMD [ "/bin/zsh" ]
+
+# setup .zshrc
+RUN echo 'export TERM=xterm-256color\n\
+source ~/ros_ws/install/setup.zsh\n\
+eval "$(register-python-argcomplete3 ros2)"\n\
+eval "$(register-python-argcomplete3 colcon)"\n'\
+>> /root/.zshrc
+
+# source entrypoint setup
+RUN sed --in-place --expression \
+      '$isource "/root/ros_ws/install/setup.bash"' \
+      /ros_entrypoint.sh
+
+RUN rm -rf /var/lib/apt/lists/*
+
+ENTRYPOINT ["/ros_entrypoint.sh"]
+
+CMD ["ros2 run serial_mav serial_mav_node"]
