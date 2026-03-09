@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  mavlink-serial:
+    image: mavlink-serial:0.0
+    container_name: mavlink-serial
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /dev:/dev
+    stdin_open: true
+    tty: true
