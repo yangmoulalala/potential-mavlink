@@ -4,12 +4,11 @@ services:
     image: mavlink-serial:0.0
     container_name: mavlink-serial
     network_mode: host
-    privileged: true
     environment:
       - DISPLAY=${DISPLAY}
       - ROS_DOMAIN_ID=10  # 添加此行，确保所有 ROS2 容器使用相同 domain ID
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix
-      - /dev:/dev
+      - /dev/c_board:/dev/c_board
     stdin_open: true
     tty: true
