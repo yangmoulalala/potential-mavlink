@@ -29,6 +29,10 @@ RUN git clone https://github.com/yangmoulalala/mavlink_ws.git /root/mavlink_ws &
     . /opt/ros/humble/setup.sh && \
     colcon build --symlink-install
 
+# source entrypoint setup
+RUN sed --in-place --expression \
+      '$isource "/root/ros_ws/install/setup.bash"' \
+      /ros_entrypoint.sh
 
 # Append ROS environment to .zshrc (append to existing zsh config)
 RUN echo '\n# ROS 2 Environment\n\
