@@ -56,7 +56,7 @@ void MavLink::serial_init()
         }
     }
 
-    ros_ser.setPort("/dev/ttyACM0");
+    ros_ser.setPort("/dev/c_board");
     ros_ser.setBaudrate(115200);
     serial::Timeout to = serial::Timeout::simpleTimeout(20);
     ros_ser.setTimeout(to);

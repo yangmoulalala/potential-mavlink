@@ -31,7 +31,7 @@ RUN git clone https://github.com/yangmoulalala/mavlink_ws.git /root/mavlink_ws &
 
 # source entrypoint setup
 RUN sed --in-place --expression \
-      '$isource "/root/ros_ws/install/setup.bash"' \
+      '$isource "/root/mavlink_ws/install/setup.bash"' \
       /ros_entrypoint.sh
 
 # Append ROS environment to .zshrc (append to existing zsh config)
