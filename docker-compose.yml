@@ -9,7 +9,7 @@ services:
       - DISPLAY=${DISPLAY}
       - ROS_DOMAIN_ID=0
     volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ./src:/root/mavlink_ws/src
     devices:
       - /dev/c_board:/dev/c_board
     stdin_open: true
