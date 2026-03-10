@@ -51,6 +51,7 @@ RUN echo '#!/bin/bash\n\
 cd /root/mavlink_ws\n\
 source /opt/ros/humble/setup.bash\n\
 source install/setup.bash\n\
+colcon build --symlink-install\n\
 exec ros2 run serial_mav serial_mav_node "$@"' > /root/start_serial_node.sh && \
     chmod +x /root/start_serial_node.sh
 

@@ -8,6 +8,7 @@ services:
     environment:
       - DISPLAY=${DISPLAY}
       - ROS_DOMAIN_ID=0
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
     volumes:
       - ./src:/root/mavlink_ws/src
     devices:
