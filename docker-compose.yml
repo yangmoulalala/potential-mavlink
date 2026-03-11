@@ -4,6 +4,7 @@ services:
     image: mavlink-serial:0.0
     container_name: mavlink-serial
     network_mode: host
+    restart: always
     ipc: host
     environment:
       - DISPLAY=${DISPLAY}
