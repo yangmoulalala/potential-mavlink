@@ -20,19 +20,19 @@ MavLink::MavLink()
         rclcpp::SensorDataQoS(),
         std::bind(&MavLink::gimbal_callback, this, _1));
     cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-        "/red_standard_robot1/cmd_vel", 10, std::bind(&MavLink::cmd_vel_callback, this, _1));
+        "/sentry/cmd_vel", 10, std::bind(&MavLink::cmd_vel_callback, this, _1));
     odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/red_standard_robot1/odometry", 10,std::bind(&MavLink::odom_callback, this, std::placeholders::_1));
+            "/sentry/odometry", 10,std::bind(&MavLink::odom_callback, this, std::placeholders::_1));
     
     // ── 发布 ─────────────────────────────────────────────────────────────────
     imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(
-        "/serial_dirver/imu_raw", rclcpp::SensorDataQoS());
+        "/serial_driver/imu_raw", rclcpp::SensorDataQoS());
 
     referee_pub_ = this->create_publisher<rm_interfaces::msg::Referee>(
-        "/red_standard_robot1/referee", 10);
+        "/referee", 10);
     
     target_position_pub_ = this->create_publisher<geometry_msgs::msg::Point>(
-        "/red_standard_robot1/target_position", 10);
+        "/sentry/target_position", 10);
 
 
     // ── 定时器（100 Hz） ──────────────────────────────────────────────────────
