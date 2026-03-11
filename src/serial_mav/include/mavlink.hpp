@@ -75,6 +75,10 @@ private:
 
     float last_cmd_yaw_     = 0.0f;
     float last_cmd_pitch_   = 0.0f;
+    bool last_is_fire_ = false;
+    int last_robot_id_ = 0;
+    float last_wr_ = 0;
+    float last_distance_ = 0;
 
 
     rclcpp::Time last_gimbal_time_;
