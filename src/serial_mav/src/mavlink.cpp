@@ -110,11 +110,11 @@ void MavLink::timer_100hz_callback()
     }
     publish_imu();
     publish_tf();
+    publish_referee();
 }
 
 void MavLink::timer_10hz_callback()
 {
-    publish_referee();
     publish_target_position();
 }
 
@@ -172,7 +172,6 @@ void MavLink::send_gimbal_cmd()
 
     send(mav_msg);
 }
-
 void MavLink::send_cmd_vel() {
     if (!serial_is_init || !ros_ser.isOpen()) return;
 
