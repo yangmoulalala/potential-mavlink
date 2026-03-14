@@ -8,10 +8,10 @@ services:
     ipc: host
     environment:
       - DISPLAY=${DISPLAY}
-      - ROS_DOMAIN_ID=0
+      - ROS_DOMAIN_ID=7 # 7:sentry  1:hero  3:infantry
       - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
     volumes:
-      - ./src:/root/mavlink_ws/src
+      - .:/root/mavlink_ws/
     devices:
       - /dev/c_board:/dev/c_board
     stdin_open: true

@@ -66,7 +66,7 @@ private:
     // 内部状态
     // =========================================================================
     sensor_msgs::msg::Imu imu_data_;
-    geometry_msgs::msg::Point target_point_;
+    geometry_msgs::msg::Point target_point_ ;
     rm_interfaces::msg::Referee referee_;
 
     rm_interfaces::msg::Cboard               gimbal_cmd_;
