@@ -143,7 +143,6 @@ void MavLink::send_gimbal_cmd()
     if (!gimbal_cmd_.is_detected){
         gimbal_cmd_.yaw   = last_cmd_yaw_;
         gimbal_cmd_.pitch = last_cmd_pitch_;
-        gimbal_cmd_.is_fire = last_is_fire_;
         gimbal_cmd_.wr = last_wr_;
         gimbal_cmd_.robot_id = last_robot_id_;
         gimbal_cmd_.distance = last_distance_;
