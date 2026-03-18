@@ -27,7 +27,6 @@
 #include <limits>
 
 namespace constants{
-    constexpr int TIMER_PERIOD_10MS = 10;  // 100 Hz
     constexpr int TIMER_PERIOD_100MS = 100; //10Hz
 }
 
@@ -53,7 +52,6 @@ private:
     // =========================================================================
     rclcpp::Subscription<rm_interfaces::msg::Cboard>::SharedPtr    gimbal_sub_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr            imu_pub_;
-    rclcpp::TimerBase::SharedPtr                                   timer_100hz_;
     rclcpp::TimerBase::SharedPtr                                   timer_10hz_;
     std::shared_ptr<tf2_ros::TransformBroadcaster>                 tf_broadcaster_;
 
@@ -92,7 +90,6 @@ private:
     // =========================================================================
     // 回调函数
     // =========================================================================
-    void timer_100hz_callback();
     void timer_10hz_callback();
 
     void gimbal_callback(const rm_interfaces::msg::Cboard::SharedPtr msg);

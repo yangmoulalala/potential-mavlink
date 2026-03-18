@@ -36,9 +36,6 @@ MavLink::MavLink()
 
 
     // ── 定时器（100 Hz） ──────────────────────────────────────────────────────
-    timer_100hz_ = this->create_wall_timer(
-        std::chrono::milliseconds(constants::TIMER_PERIOD_10MS),
-        std::bind(&MavLink::timer_100hz_callback, this));
     timer_10hz_ = this->create_wall_timer(
         std::chrono::milliseconds(constants::TIMER_PERIOD_100MS),
         std::bind(&MavLink::timer_10hz_callback, this));
@@ -81,26 +78,35 @@ void MavLink::gimbal_callback(const rm_interfaces::msg::Cboard::SharedPtr msg)
 {
     last_gimbal_time_ = this->now();
     gimbal_cmd_       = *msg;
+    if (serial_is_init) {
+        try {
+            send_gimbal_cmd();
+        } catch (...) {
+            RCLCPP_ERROR(get_logger(), "Error in uart process, closing serial.");
+            ros_ser.close();
+            serial_is_init = false;
+        }
+    }
 }
 
 void MavLink::cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
     cmd_vel_ = *msg;
+    if (serial_is_init) {
+        try {
+            send_cmd_vel();
+        } catch (...) {
+            RCLCPP_ERROR(get_logger(), "Error in uart process, closing serial.");
+            ros_ser.close();
+            serial_is_init = false;
+        }
+    }
 }
 
 void MavLink::odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg){
     odometry_ = *msg;
-}
-
-// =============================================================================
-// 定时器主回调（100 Hz）
-// =============================================================================
-void MavLink::timer_100hz_callback()
-{
     if (serial_is_init) {
         try {
-            send_gimbal_cmd();
-            send_cmd_vel();
             send_odometry();
         } catch (...) {
             RCLCPP_ERROR(get_logger(), "Error in uart process, closing serial.");
@@ -108,10 +114,11 @@ void MavLink::timer_100hz_callback()
             serial_is_init = false;
         }
     }
-    publish_imu();
-    publish_tf();
-    publish_referee();
 }
+
+// =============================================================================
+// 定时器主回调（10 Hz）
+// =============================================================================
 
 void MavLink::timer_10hz_callback()
 {
@@ -129,16 +136,6 @@ void MavLink::timer_10hz_callback()
 void MavLink::send_gimbal_cmd()
 {
 
-    // if (best_armor_.has_value()) {
-    //     is_detected    = 1;
-    //     last_cmd_yaw_  = gimbal_cmd_.yaw;
-    //     last_cmd_pitch_= gimbal_cmd_.pitch;
-    //     RCLCPP_INFO(get_logger(), "Target v_yaw=%.3f", target_.v_yaw);
-    // } else {
-    //     // 保持上一帧指令，防止丢帧时云台抖动
-    //     gimbal_cmd_.yaw   = last_cmd_yaw_;
-    //     gimbal_cmd_.pitch = last_cmd_pitch_;
-    // }
 
     if (!gimbal_cmd_.is_detected){
         gimbal_cmd_.yaw   = last_cmd_yaw_;
@@ -282,6 +279,8 @@ void MavLink::parse_mavlink_msg(const mavlink_message_t& msg)
                 imu_data_.orientation.y = q.getY();
                 imu_data_.orientation.z = q.getZ();
                 imu_data_.orientation.w = q.getW();
+                publish_imu();
+                publish_tf();
             break;
         }
 
@@ -294,6 +293,7 @@ void MavLink::parse_mavlink_msg(const mavlink_message_t& msg)
                 this->referee_.is_red = ref.is_red;
                 this->referee_.bullet_speed = ref.bullet_speed;
                 
+                publish_referee();
             break;
         }
 
