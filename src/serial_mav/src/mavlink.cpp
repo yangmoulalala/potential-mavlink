@@ -24,13 +24,13 @@ MavLink::MavLink() : Node("MavLink")
     
     // ── 发布 ─────────────────────────────────────────────────────────────────
     imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(
-        "/serial_driver/imu_raw", rclcpp::SensorDataQoS());
+        "/mavlink/serial_driver/imu_raw", rclcpp::SensorDataQoS());
 
     referee_pub_ = this->create_publisher<rm_interfaces::msg::Referee>(
-        "/referee", 10);
+        "/mavlink/referee", 10);
     
     target_position_pub_ = this->create_publisher<geometry_msgs::msg::Point>(
-        "/sentry/target_position", 10);
+        "/mavlink/target_position", 10);
 
     insta360_color_slot_pub_ = this->create_publisher<std_msgs::msg::Int32>(
         "/mavlink/insta360/color_slot", 10);
