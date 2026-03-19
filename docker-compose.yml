@@ -1,17 +1,17 @@
 version: '3.8'
 services:
-  mavlink-serial:
-    image: mavlink-serial:0.0
-    container_name: mavlink-serial
+  potential-mavlink:
+    image: potential-mavlink:0.0
+    container_name: potential-mavlink
     network_mode: host
     restart: always
-    ipc: host
     environment:
       - DISPLAY=${DISPLAY}
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
     volumes:
       - .:/root/mavlink_ws/
+      - /dev/:/dev/
     devices:
       - /dev/c_board:/dev/c_board
     stdin_open: true

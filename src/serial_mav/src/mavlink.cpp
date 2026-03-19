@@ -32,6 +32,9 @@ MavLink::MavLink() : Node("MavLink")
     target_position_pub_ = this->create_publisher<geometry_msgs::msg::Point>(
         "/sentry/target_position", 10);
 
+    insta360_color_slot_pub_ = this->create_publisher<std_msgs::msg::Int32>(
+        "/mavlink/insta360/color_slot", 10);
+
 
     timer_ = create_wall_timer(
             std::chrono::milliseconds(constants::TIMER_PERIOD_MS),
@@ -248,6 +251,11 @@ void MavLink::parse_mavlink_msg(const mavlink_message_t& msg)
             this->referee_.bullet_speed = ref.bullet_speed;
     
             publish_referee();
+
+            //向insta360发送消息，topic: 0=红色, 1=蓝色
+            std_msgs::msg::Int32 color_msg;
+            color_msg.data = static_cast<int32_t>(!ref.is_red);
+            insta360_color_slot_pub_->publish(color_msg);
 
             // RCLCPP_INFO(this->get_logger(), "game_progress=%d stage_remain_time=%d is_red=%d bullet_speed=%.3f", ref.game_progress, ref.stage_remain_time, ref.is_red, ref.bullet_speed);
             break;
