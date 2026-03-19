@@ -53,7 +53,8 @@ void MavLink::serial_init() {
         
         ros_ser_.setPort("/dev/c_board");
         ros_ser_.setBaudrate(115200);
-        ros_ser_.setTimeout(serial::Timeout::simpleTimeout(20));
+        serial::Timeout timeout = serial::Timeout::simpleTimeout(20);
+        ros_ser_.setTimeout(timeout);
         ros_ser_.open();
 
         serial_is_init_ = ros_ser_.isOpen();
@@ -248,7 +249,7 @@ void MavLink::parse_mavlink_msg(const mavlink_message_t& msg)
     
             publish_referee();
 
-            RCLCPP_INFO(this->get_logger(), "game_progress=%d stage_remain_time=%d is_red=%d bullet_speed=%.3f", ref.game_progress, ref.stage_remain_time, ref.is_red, ref.bullet_speed);
+            // RCLCPP_INFO(this->get_logger(), "game_progress=%d stage_remain_time=%d is_red=%d bullet_speed=%.3f", ref.game_progress, ref.stage_remain_time, ref.is_red, ref.bullet_speed);
             break;
         }
 
@@ -258,7 +259,7 @@ void MavLink::parse_mavlink_msg(const mavlink_message_t& msg)
             this->target_point_.x = position.x;
             this->target_point_.y = position.y;
 
-            RCLCPP_INFO(this->get_logger(), "target_position x=%.3f y=%.3f", position.x, position.y);
+            // RCLCPP_INFO(this->get_logger(), "target_position x=%.3f y=%.3f", position.x, position.y);
             break;
         }
 

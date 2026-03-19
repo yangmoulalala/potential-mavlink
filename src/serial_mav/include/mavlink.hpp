@@ -43,6 +43,12 @@ private:
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg);
     void timer_callback();
 
+    // 发布函数
+    void publish_imu();
+    void publish_tf();
+    void publish_referee();
+    void publish_target_position();
+
     // 内部处理
     void process_gimbal_logic(rm_interfaces::msg::Cboard& cmd);
 
@@ -58,7 +64,7 @@ private:
     
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
     rclcpp::Publisher<rm_interfaces::msg::Referee>::SharedPtr referee_pub_;
-    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr target_pos_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr target_position_pub_;
     
     rclcpp::TimerBase::SharedPtr timer_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
@@ -67,6 +73,10 @@ private:
     sensor_msgs::msg::Imu imu_msg_;
     rm_interfaces::msg::Referee referee_msg_;
     geometry_msgs::msg::Point target_point_;
+    
+    // 发布数据缓存
+    sensor_msgs::msg::Imu imu_data_;
+    rm_interfaces::msg::Referee referee_;
     
     // 记录上一次的状态用于丢失目标时的保持
     struct {
