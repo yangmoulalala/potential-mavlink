@@ -65,6 +65,7 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
     rclcpp::Publisher<rm_interfaces::msg::Referee>::SharedPtr referee_pub_;
     rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr target_position_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::Int32>::SharedPtr insta360_color_slot_pub_;
     
     rclcpp::TimerBase::SharedPtr timer_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
