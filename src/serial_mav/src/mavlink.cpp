@@ -1,24 +1,22 @@
 #include "mavlink.hpp"
 
 using std::placeholders::_1;
-
 // =============================================================================
 // 构造函数
 // =============================================================================
-MavLink::MavLink()
-    : Node("MavLink"),
-      last_gimbal_time_(this->now()),
-      last_set_color_time_(this->now()),
-      tf_broadcaster_(std::make_shared<tf2_ros::TransformBroadcaster>(this))
+MavLink::MavLink() : Node("MavLink")
 {
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(this);
+
+    // QoS 设置
+    auto sensor_qos = rclcpp::SensorDataQoS();
+
     // ── 串口初始化 ────────────────────────────────────────────────────────────
     serial_init();
 
     // ── 订阅 ─────────────────────────────────────────────────────────────────
     gimbal_sub_ = this->create_subscription<rm_interfaces::msg::Cboard>(
-        "/vision/auto_aim",
-        rclcpp::SensorDataQoS(),
-        std::bind(&MavLink::gimbal_callback, this, _1));
+        "/vision/auto_aim",rclcpp::SensorDataQoS(),std::bind(&MavLink::gimbal_callback, this, _1));
     cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
         "/sentry/cmd_vel", 10, std::bind(&MavLink::cmd_vel_callback, this, _1));
     odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
@@ -35,38 +33,36 @@ MavLink::MavLink()
         "/sentry/target_position", 10);
 
 
-    // ── 定时器（100 Hz） ──────────────────────────────────────────────────────
-    timer_10hz_ = this->create_wall_timer(
-        std::chrono::milliseconds(constants::TIMER_PERIOD_100MS),
-        std::bind(&MavLink::timer_10hz_callback, this));
+    timer_ = create_wall_timer(
+            std::chrono::milliseconds(constants::TIMER_PERIOD_MS),
+            std::bind(&MavLink::timer_callback, this));
 }
-
+MavLink::~MavLink() {
+    std::lock_guard<std::mutex> lock(serial_mtx_);
+    if (ros_ser_.isOpen()) {
+        ros_ser_.close();
+    }
+}
 // =============================================================================
 // 串口管理
 // =============================================================================
-void MavLink::serial_init()
-{
-    if (ros_ser.isOpen()) {
-        try { ros_ser.close(); }
-        catch (const serial::IOException& e) {
-            RCLCPP_ERROR(get_logger(), "Close serial error: %s", e.what());
-        }
-    }
-
-    ros_ser.setPort("/dev/c_board");
-    ros_ser.setBaudrate(115200);
-    serial::Timeout to = serial::Timeout::simpleTimeout(20);
-    ros_ser.setTimeout(to);
-
+void MavLink::serial_init() {
+    std::lock_guard<std::mutex> lock(serial_mtx_);
     try {
-        ros_ser.open();
-        serial_is_init = ros_ser.isOpen();
-        if (serial_is_init) {
-            RCLCPP_INFO(get_logger(), "Serial port opened successfully.");
+        if (ros_ser_.isOpen()) ros_ser_.close();
+        
+        ros_ser_.setPort("/dev/c_board");
+        ros_ser_.setBaudrate(115200);
+        ros_ser_.setTimeout(serial::Timeout::simpleTimeout(20));
+        ros_ser_.open();
+
+        serial_is_init_ = ros_ser_.isOpen();
+        if (serial_is_init_) {
+            RCLCPP_INFO(get_logger(), "Serial connected to /dev/c_board");
         }
     } catch (const std::exception& e) {
-        RCLCPP_ERROR(get_logger(), "Open serial error: %s", e.what());
-        serial_is_init = false;
+        RCLCPP_ERROR(get_logger(), "Serial init failed: %s", e.what());
+        serial_is_init_ = false;
     }
 }
 
@@ -76,51 +72,71 @@ void MavLink::serial_init()
 // =============================================================================
 void MavLink::gimbal_callback(const rm_interfaces::msg::Cboard::SharedPtr msg)
 {
-    last_gimbal_time_ = this->now();
-    gimbal_cmd_       = *msg;
-    if (serial_is_init) {
-        try {
-            send_gimbal_cmd();
-        } catch (...) {
-            RCLCPP_ERROR(get_logger(), "Error in uart process, closing serial.");
-            ros_ser.close();
-            serial_is_init = false;
-        }
+    auto cmd = *msg;
+    
+    // 逻辑处理：目标丢失时保持
+    if (!cmd.is_detected) {
+        cmd.yaw = last_state_.yaw;
+        cmd.pitch = last_state_.pitch;
+        cmd.wr = last_state_.wr;
+        cmd.robot_id = last_state_.robot_id;
+        cmd.distance = last_state_.distance;
+    } else {
+        last_state_.yaw = cmd.yaw;
+        last_state_.pitch = cmd.pitch;
+        last_state_.wr = cmd.wr;
+        last_state_.robot_id = cmd.robot_id;
+        last_state_.distance = cmd.distance;
     }
+
+    mavlink_message_t mav_msg;
+    mavlink_msg_auto_aim_pack(1, 200, &mav_msg, 
+        cmd.is_detected, cmd.yaw, cmd.pitch, cmd.is_fire, 
+        cmd.robot_id, cmd.wr, cmd.distance);
+    
+    send_mavlink(mav_msg);
 }
 
 void MavLink::cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
-    cmd_vel_ = *msg;
-    if (serial_is_init) {
-        try {
-            send_cmd_vel();
-        } catch (...) {
-            RCLCPP_ERROR(get_logger(), "Error in uart process, closing serial.");
-            ros_ser.close();
-            serial_is_init = false;
-        }
-    }
+    auto cmd = *msg;
+
+    mavlink_message_t mav_msg;
+    mavlink_msg_chassis_speed_pack(1, 200, &mav_msg,
+                                   cmd.linear.x, 
+                                   cmd.linear.y);
+
+    send_mavlink(mav_msg);
 }
 
 void MavLink::odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg){
-    odometry_ = *msg;
-    if (serial_is_init) {
-        try {
-            send_odometry();
-        } catch (...) {
-            RCLCPP_ERROR(get_logger(), "Error in uart process, closing serial.");
-            ros_ser.close();
-            serial_is_init = false;
-        }
-    }
+    auto cmd = *msg;
+
+    //四元数获取yaw
+    tf2::Quaternion q(
+    cmd.pose.pose.orientation.x,
+    cmd.pose.pose.orientation.y,
+    cmd.pose.pose.orientation.z,
+    cmd.pose.pose.orientation.w
+    );
+
+    double roll, pitch, yaw;
+    tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+    mavlink_message_t mav_msg;
+    mavlink_msg_current_position_pack(1, 200, &mav_msg,
+                                      cmd.pose.pose.position.x,
+                                      cmd.pose.pose.position.y,
+                                      yaw * 180.0 / M_PI);
+
+    send_mavlink(mav_msg);
 }
 
 // =============================================================================
 // 定时器主回调（10 Hz）
 // =============================================================================
 
-void MavLink::timer_10hz_callback()
+void MavLink::timer_callback()
 {
     publish_target_position();
 }
@@ -133,95 +149,29 @@ void MavLink::timer_10hz_callback()
 /**
  * @brief 打包 MAVLink 帧并通过串口发送云台控制指令。
  */
-void MavLink::send_gimbal_cmd()
-{
 
-
-    if (!gimbal_cmd_.is_detected){
-        gimbal_cmd_.yaw   = last_cmd_yaw_;
-        gimbal_cmd_.pitch = last_cmd_pitch_;
-        gimbal_cmd_.wr = last_wr_;
-        gimbal_cmd_.robot_id = last_robot_id_;
-        gimbal_cmd_.distance = last_distance_;
-    }
-    
-    if (gimbal_cmd_.is_detected) {
-        last_cmd_yaw_  = gimbal_cmd_.yaw;
-        last_cmd_pitch_= gimbal_cmd_.pitch;
-        last_is_fire_ = gimbal_cmd_.is_fire;
-        last_wr_ = gimbal_cmd_.wr;
-        last_robot_id_ = gimbal_cmd_.robot_id;
-    }
-    // RCLCPP_INFO(get_logger(), "gimbal_cmd_yaw=%.3f", gimbal_cmd_.yaw);
-    mavlink_message_t mav_msg;
-    uint8_t buf[128];
-
-    mavlink_msg_auto_aim_pack(1, 200, &mav_msg,
-                         gimbal_cmd_.is_detected,
-                         gimbal_cmd_.yaw,
-                         gimbal_cmd_.pitch,
-                         gimbal_cmd_.is_fire,
-                         gimbal_cmd_.robot_id,
-                         gimbal_cmd_.wr,
-                         gimbal_cmd_.distance
-                        );
-
-    send(mav_msg);
-}
-void MavLink::send_cmd_vel() {
-    if (!serial_is_init || !ros_ser.isOpen()) return;
-
-    mavlink_message_t mav_msg;
-
-    mavlink_msg_chassis_speed_pack(1, 200, &mav_msg,
-                                               cmd_vel_.linear.x, 
-                                               cmd_vel_.linear.y);
-
-    send(mav_msg);
-}
-void MavLink::send_odometry(){
-    if (!serial_is_init || !ros_ser.isOpen()) return;
-
-    mavlink_message_t mav_msg;
-
-
-    //四元数获取yaw
-    tf2::Quaternion q(
-    odometry_.pose.pose.orientation.x,
-    odometry_.pose.pose.orientation.y,
-    odometry_.pose.pose.orientation.z,
-    odometry_.pose.pose.orientation.w
-    );
-    double roll, pitch, yaw;
-    tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
-
-    u_int16_t len = mavlink_msg_current_position_pack(1,200, &mav_msg,
-                                            odometry_.pose.pose.position.x,
-                                            odometry_.pose.pose.position.y,
-                                            yaw * 180.0 / M_PI);
-
-    send(mav_msg);
-}
-
-void MavLink::send(const mavlink_message_t &mav_msg){
+void MavLink::send_mavlink(const mavlink_message_t& msg) {
+    if (!serial_is_init_) return;
 
     uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+    uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
 
+    std::lock_guard<std::mutex> lock(serial_mtx_);
     try {
-        uint16_t len = mavlink_msg_to_send_buffer(buf, &mav_msg); 
-        size_t bytes_written = ros_ser.write(buf, len);
-        if (bytes_written != len) {
-            RCLCPP_WARN(this->get_logger(), "Wait! Send mismatch: req %d, sent %ld", len, bytes_written);
-        } 
+        size_t written = ros_ser_.write(buf, len);
+        if (written != len) {
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Serial write mismatch!");
+        }
     } catch (const std::exception& e) {
-        RCLCPP_ERROR(this->get_logger(), "Write error: %s", e.what());
-        serial_is_init = false;
+        RCLCPP_ERROR(get_logger(), "Serial write error: %s", e.what());
+        serial_is_init_ = false;
     }
 }
 
 // =============================================================================
 // 发布接口
 // =============================================================================
+
 void MavLink::publish_imu()
 {
     imu_data_.header.stamp    = this->now();
@@ -279,21 +229,26 @@ void MavLink::parse_mavlink_msg(const mavlink_message_t& msg)
                 imu_data_.orientation.y = q.getY();
                 imu_data_.orientation.z = q.getZ();
                 imu_data_.orientation.w = q.getW();
+
                 publish_imu();
                 publish_tf();
+
+                // RCLCPP_INFO(this->get_logger(), "roll=%.3f pitch=%.3f yaw=%.3f", roll, pitch, yaw);
             break;
         }
 
         case MAVLINK_MSG_ID_referee: {
-                mavlink_referee_t ref;
-                mavlink_msg_referee_decode(&msg, &ref);
+            mavlink_referee_t ref;
+            mavlink_msg_referee_decode(&msg, &ref);
 
-                this->referee_.game_progress =ref.game_progress;
-                this->referee_.stage_remain_time = ref.stage_remain_time;
-                this->referee_.is_red = ref.is_red;
-                this->referee_.bullet_speed = ref.bullet_speed;
-                
-                publish_referee();
+            this->referee_.game_progress =ref.game_progress;
+            this->referee_.stage_remain_time = ref.stage_remain_time;
+            this->referee_.is_red = ref.is_red;
+            this->referee_.bullet_speed = ref.bullet_speed;
+    
+            publish_referee();
+
+            RCLCPP_INFO(this->get_logger(), "game_progress=%d stage_remain_time=%d is_red=%d bullet_speed=%.3f", ref.game_progress, ref.stage_remain_time, ref.is_red, ref.bullet_speed);
             break;
         }
 
@@ -302,11 +257,36 @@ void MavLink::parse_mavlink_msg(const mavlink_message_t& msg)
             mavlink_msg_target_position_decode(&msg, &position);
             this->target_point_.x = position.x;
             this->target_point_.y = position.y;
+
+            RCLCPP_INFO(this->get_logger(), "target_position x=%.3f y=%.3f", position.x, position.y);
             break;
         }
 
         default:
 
             break;
+    }
+}
+// 串口接收逻辑（由 main 线程调用）
+void MavLink::receive_and_parse() {
+    if (!serial_is_init_) return;
+
+    std::vector<uint8_t> buf;
+    {
+        std::lock_guard<std::mutex> lock(serial_mtx_);
+        size_t n = ros_ser_.available();
+        if (n > 0) {
+            ros_ser_.read(buf, n);
+        }
+    }
+
+    if (!buf.empty()) {
+        mavlink_message_t msg;
+        mavlink_status_t status;
+        for (uint8_t c : buf) {
+            if (mavlink_parse_char(MAVLINK_COMM_0, c, &msg, &status)) {
+                parse_mavlink_msg(msg);
+            }
+        }
     }
 }
