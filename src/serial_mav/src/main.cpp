@@ -12,7 +12,7 @@ int main(int argc, char* argv[]) {
     std::thread serial_thread([node]() {
         while (rclcpp::ok()) {
             if (!node->is_serial_ok()) {
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 node->serial_init();
                 continue;
             }
@@ -29,8 +29,8 @@ int main(int argc, char* argv[]) {
     });
 
     executor.spin();
-    
-    if (serial_thread.joinable()) serial_thread.join();
+
     rclcpp::shutdown();
+    if (serial_thread.joinable()) serial_thread.join();
     return 0;
 }

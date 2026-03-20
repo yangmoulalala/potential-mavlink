@@ -37,31 +37,44 @@ MavLink::MavLink() : Node("MavLink")
     insta360_color_slot_pub_ = this->create_publisher<std_msgs::msg::Int32>(
         "/mavlink/insta360/color_slot", 10);
 
-    insta360_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(
-        "/mavlink/insta360", 10);
-
-
     timer_ = create_wall_timer(
             std::chrono::milliseconds(constants::TIMER_PERIOD_MS),
             std::bind(&MavLink::timer_callback, this));
 }
 MavLink::~MavLink() {
     std::lock_guard<std::mutex> lock(serial_mtx_);
-    if (ros_ser_.isOpen()) {
-        ros_ser_.close();
-    }
+    handle_serial_disconnect_locked("node shutdown");
 }
+
 // =============================================================================
 // 串口管理
 // =============================================================================
+void MavLink::handle_serial_disconnect_locked(const std::string& reason) {
+    if (ros_ser_.isOpen()) {
+        try {
+            ros_ser_.close();
+        } catch (const std::exception& e) {
+            RCLCPP_WARN(get_logger(), "Serial close error while handling [%s]: %s", reason.c_str(), e.what());
+        }
+    }
+
+    if (serial_is_init_.exchange(false)) {
+        RCLCPP_WARN(get_logger(), "Serial disconnected: %s", reason.c_str());
+    }
+}
+
 void MavLink::serial_init() {
     std::lock_guard<std::mutex> lock(serial_mtx_);
+    serial_is_init_ = false;
+
     try {
-        if (ros_ser_.isOpen()) ros_ser_.close();
-        
+        if (ros_ser_.isOpen()) {
+            ros_ser_.close();
+        }
+
         ros_ser_.setPort("/dev/c_board");
         ros_ser_.setBaudrate(115200);
-        serial::Timeout timeout = serial::Timeout::simpleTimeout(20);
+        auto timeout = serial::Timeout::simpleTimeout(20);
         ros_ser_.setTimeout(timeout);
         ros_ser_.open();
 
@@ -70,8 +83,8 @@ void MavLink::serial_init() {
             RCLCPP_INFO(get_logger(), "Serial connected to /dev/c_board");
         }
     } catch (const std::exception& e) {
-        RCLCPP_ERROR(get_logger(), "Serial init failed: %s", e.what());
-        serial_is_init_ = false;
+        handle_serial_disconnect_locked(e.what());
+        RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000, "Serial init failed: %s", e.what());
     }
 }
 
@@ -186,17 +199,23 @@ void MavLink::send_mavlink(const mavlink_message_t& msg) {
     if (!serial_is_init_) return;
 
     uint8_t buf[MAVLINK_MAX_PACKET_LEN];
-    uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
+    const uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
 
     std::lock_guard<std::mutex> lock(serial_mtx_);
+    if (!ros_ser_.isOpen()) {
+        handle_serial_disconnect_locked("port not open before write");
+        return;
+    }
+
     try {
-        size_t written = ros_ser_.write(buf, len);
+        const size_t written = ros_ser_.write(buf, len);
+        RCLCPP_INFO(get_logger(), "Serial write %zu/%u bytes", written, len);
         if (written != len) {
-            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Serial write mismatch!");
+            handle_serial_disconnect_locked("short write");
         }
     } catch (const std::exception& e) {
+        handle_serial_disconnect_locked(e.what());
         RCLCPP_ERROR(get_logger(), "Serial write error: %s", e.what());
-        serial_is_init_ = false;
     }
 }
 
@@ -237,11 +256,6 @@ void MavLink::publish_target_position()
     target_position_pub_->publish(target_point_);
 }
 
-void MavLink::publish_insta360()
-{
-    insta360_data_.header.stamp = this->now();
-    insta360_pub_->publish(insta360_data_);
-}
 
 void MavLink::parse_mavlink_msg(const mavlink_message_t& msg)
 { 
@@ -305,26 +319,6 @@ void MavLink::parse_mavlink_msg(const mavlink_message_t& msg)
             break;
         }
 
-        case MAVLINK_MSG_ID_insta360: {
-            mavlink_insta360_t insta360_msg;
-            mavlink_msg_insta360_decode(&msg, &insta360_msg);
-            
-            // 将6个浮点数值存入Float32MultiArray
-            this->insta360_data_.data.clear();
-            this->insta360_data_.data.push_back(insta360_msg.a0);
-            this->insta360_data_.data.push_back(insta360_msg.c0);
-            this->insta360_data_.data.push_back(insta360_msg.a1);
-            this->insta360_data_.data.push_back(insta360_msg.c1);
-            this->insta360_data_.data.push_back(insta360_msg.a2);
-            this->insta360_data_.data.push_back(insta360_msg.c2);
-            
-            publish_insta360();
-            
-            // RCLCPP_INFO(this->get_logger(), "insta360: a0=%.3f c0=%.3f a1=%.3f c1=%.3f a2=%.3f c2=%.3f", 
-            //             insta360_msg.a0, insta360_msg.c0, insta360_msg.a1, insta360_msg.c1, insta360_msg.a2, insta360_msg.c2);
-            break;
-        }
-
         default:
 
             break;
@@ -337,15 +331,26 @@ void MavLink::receive_and_parse() {
     std::vector<uint8_t> buf;
     {
         std::lock_guard<std::mutex> lock(serial_mtx_);
-        size_t n = ros_ser_.available();
-        if (n > 0) {
-            ros_ser_.read(buf, n);
+        if (!ros_ser_.isOpen()) {
+            handle_serial_disconnect_locked("port not open before read");
+            return;
+        }
+
+        try {
+            const size_t n = ros_ser_.available();
+            if (n > 0) {
+                ros_ser_.read(buf, n);
+            }
+        } catch (const std::exception& e) {
+            handle_serial_disconnect_locked(e.what());
+            RCLCPP_ERROR(get_logger(), "Serial read error: %s", e.what());
+            return;
         }
     }
 
     if (!buf.empty()) {
         mavlink_message_t msg;
-        mavlink_status_t status;
+        mavlink_status_t status{};
         for (uint8_t c : buf) {
             if (mavlink_parse_char(MAVLINK_COMM_0, c, &msg, &status)) {
                 parse_mavlink_msg(msg);

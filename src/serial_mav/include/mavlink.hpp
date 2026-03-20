@@ -17,6 +17,8 @@
 #include "serial/serial.h"
 #include "mavlink/msg/mavlink.h"
 
+#include <atomic>
+#include <string>
 #include <mutex>
 #include <memory>
 
@@ -39,6 +41,7 @@ public:
 private:
     // 串口发送封装（线程安全）
     void send_mavlink(const mavlink_message_t& msg);
+    void handle_serial_disconnect_locked(const std::string& reason);
 
     // 回调函数
     void gimbal_callback(const rm_interfaces::msg::Cboard::SharedPtr msg);
@@ -52,7 +55,6 @@ private:
     void publish_tf();
     void publish_referee();
     void publish_target_position();
-    void publish_insta360();
 
     // 内部处理
     void process_gimbal_logic(rm_interfaces::msg::Cboard& cmd);
