@@ -21,6 +21,8 @@ MavLink::MavLink() : Node("MavLink")
         "/sentry/cmd_vel", 10, std::bind(&MavLink::cmd_vel_callback, this, _1));
     odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/sentry/odometry", 10,std::bind(&MavLink::odom_callback, this, std::placeholders::_1));
+    insta360_sub_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
+            "/insta360", 10, std::bind(&MavLink::insta360_callback, this, std::placeholders::_1));
     
     // ── 发布 ─────────────────────────────────────────────────────────────────
     imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(
@@ -34,6 +36,9 @@ MavLink::MavLink() : Node("MavLink")
 
     insta360_color_slot_pub_ = this->create_publisher<std_msgs::msg::Int32>(
         "/mavlink/insta360/color_slot", 10);
+
+    insta360_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(
+        "/mavlink/insta360", 10);
 
 
     timer_ = create_wall_timer(
@@ -136,6 +141,29 @@ void MavLink::odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg){
     send_mavlink(mav_msg);
 }
 
+void MavLink::insta360_callback(const std_msgs::msg::Float32MultiArray::SharedPtr msg)
+{
+    // 验证数据长度
+    if (msg->data.size() < 6) {
+        RCLCPP_WARN(get_logger(), "Insta360 message data size insufficient: %zu, expected 6", msg->data.size());
+        return;
+    }
+    
+    // 提取数据
+    float a0 = msg->data[0];
+    float c0 = msg->data[1];
+    float a1 = msg->data[2];
+    float c1 = msg->data[3];
+    float a2 = msg->data[4];
+    float c2 = msg->data[5];
+    
+    // 打包MAVLink消息并发送
+    mavlink_message_t mav_msg;
+    mavlink_msg_insta360_pack(1, 200, &mav_msg, a0, c0, a1, c1, a2, c2);
+    
+    send_mavlink(mav_msg);
+}
+
 // =============================================================================
 // 定时器主回调（10 Hz）
 // =============================================================================
@@ -209,6 +237,12 @@ void MavLink::publish_target_position()
     target_position_pub_->publish(target_point_);
 }
 
+void MavLink::publish_insta360()
+{
+    insta360_data_.header.stamp = this->now();
+    insta360_pub_->publish(insta360_data_);
+}
+
 void MavLink::parse_mavlink_msg(const mavlink_message_t& msg)
 { 
     switch (msg.msgid) {
@@ -268,6 +302,26 @@ void MavLink::parse_mavlink_msg(const mavlink_message_t& msg)
             this->target_point_.y = position.y;
 
             // RCLCPP_INFO(this->get_logger(), "target_position x=%.3f y=%.3f", position.x, position.y);
+            break;
+        }
+
+        case MAVLINK_MSG_ID_insta360: {
+            mavlink_insta360_t insta360_msg;
+            mavlink_msg_insta360_decode(&msg, &insta360_msg);
+            
+            // 将6个浮点数值存入Float32MultiArray
+            this->insta360_data_.data.clear();
+            this->insta360_data_.data.push_back(insta360_msg.a0);
+            this->insta360_data_.data.push_back(insta360_msg.c0);
+            this->insta360_data_.data.push_back(insta360_msg.a1);
+            this->insta360_data_.data.push_back(insta360_msg.c1);
+            this->insta360_data_.data.push_back(insta360_msg.a2);
+            this->insta360_data_.data.push_back(insta360_msg.c2);
+            
+            publish_insta360();
+            
+            // RCLCPP_INFO(this->get_logger(), "insta360: a0=%.3f c0=%.3f a1=%.3f c1=%.3f a2=%.3f c2=%.3f", 
+            //             insta360_msg.a0, insta360_msg.c0, insta360_msg.a1, insta360_msg.c1, insta360_msg.a2, insta360_msg.c2);
             break;
         }
 

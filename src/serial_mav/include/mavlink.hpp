@@ -6,6 +6,7 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
@@ -43,6 +44,7 @@ private:
     void gimbal_callback(const rm_interfaces::msg::Cboard::SharedPtr msg);
     void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg);
+    void insta360_callback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
     void timer_callback();
 
     // 发布函数
@@ -50,6 +52,7 @@ private:
     void publish_tf();
     void publish_referee();
     void publish_target_position();
+    void publish_insta360();
 
     // 内部处理
     void process_gimbal_logic(rm_interfaces::msg::Cboard& cmd);
@@ -63,12 +66,12 @@ private:
     rclcpp::Subscription<rm_interfaces::msg::Cboard>::SharedPtr gimbal_sub_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
+    rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr insta360_sub_;
     
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
     rclcpp::Publisher<rm_interfaces::msg::Referee>::SharedPtr referee_pub_;
     rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr target_position_pub_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr insta360_color_slot_pub_;
-    
     rclcpp::TimerBase::SharedPtr timer_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
