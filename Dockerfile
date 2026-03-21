@@ -1,7 +1,8 @@
 FROM ros:humble-ros-base
 
 RUN sudo apt update && \
-    sudo apt install -y python3-pip curl wget python3-rosdep ros-humble-ament-cmake
+    sudo apt install -y python3-pip curl wget  ros-humble-ament-cmake && \
+    sudo pip install rosdepc
 
 
 # setup zsh
@@ -40,7 +41,7 @@ WORKDIR /root/mavlink_ws
 COPY . /root/mavlink_ws
 
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
-    rosdep install --from-paths src --ignore-src -r -y && \
+    rosdepc install --from-paths src --ignore-src -r -y && \
     colcon build --symlink-install"
 
 RUN chmod +x /root/mavlink_ws/start_serial_node.sh

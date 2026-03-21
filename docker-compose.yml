@@ -4,6 +4,7 @@ services:
     container_name: potential-mavlink
     network_mode: host
     restart: always
+    privileged: true
     environment:
       - DISPLAY=${DISPLAY}
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
@@ -11,8 +12,6 @@ services:
     volumes:
       - .:/root/mavlink_ws/
       - /dev/:/dev/
-    devices:
-      - /dev/c_board:/dev/c_board
     stdin_open: true
     tty: true
     group_add:
