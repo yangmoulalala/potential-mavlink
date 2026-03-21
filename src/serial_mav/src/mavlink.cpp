@@ -22,7 +22,7 @@ MavLink::MavLink() : Node("MavLink")
     odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/sentry/odometry", 10,std::bind(&MavLink::odom_callback, this, std::placeholders::_1));
     insta360_sub_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
-            "/insta360", 10, std::bind(&MavLink::insta360_callback, this, std::placeholders::_1));
+            "/insta360/top3_angles", 10, std::bind(&MavLink::insta360_callback, this, std::placeholders::_1));
     
     // ── 发布 ─────────────────────────────────────────────────────────────────
     imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(
@@ -40,16 +40,42 @@ MavLink::MavLink() : Node("MavLink")
     timer_ = create_wall_timer(
             std::chrono::milliseconds(constants::TIMER_PERIOD_MS),
             std::bind(&MavLink::timer_callback, this));
+    
+    // 初始化频率统计
+    last_stats_time_ = this->now();
+    stats_timer_ = create_wall_timer(
+        std::chrono::seconds(1),  // 每秒统计一次
+        std::bind(&MavLink::stats_callback, this));
 }
+
 MavLink::~MavLink() {
     std::lock_guard<std::mutex> lock(serial_mtx_);
     handle_serial_disconnect_locked("node shutdown");
 }
 
 // =============================================================================
+// 频率统计回调
+// =============================================================================
+void MavLink::stats_callback()
+{
+    rclcpp::Time current_time = this->now();
+    double elapsed_sec = (current_time - last_stats_time_).seconds();
+    
+    if (elapsed_sec > 0.0) {
+        rx_frequency_ = static_cast<double>(rx_count_.exchange(0)) / elapsed_sec;
+        tx_frequency_ = static_cast<double>(tx_count_.exchange(0)) / elapsed_sec;
+        
+        RCLCPP_INFO(this->get_logger(), "Serial RX frequency: %.2f Hz, TX frequency: %.2f Hz", 
+                   rx_frequency_, tx_frequency_);
+    }
+    
+    last_stats_time_ = current_time;
+}
+
+// =============================================================================
 // 串口管理
 // =============================================================================
-void MavLink::handle_serial_disconnect_locked(const std::string& reason) {
+void MavLink::handle_serial_disconnect_locked(const std:: string& reason) {
     if (ros_ser_.isOpen()) {
         try {
             ros_ser_.close();
@@ -209,7 +235,9 @@ void MavLink::send_mavlink(const mavlink_message_t& msg) {
 
     try {
         const size_t written = ros_ser_.write(buf, len);
-        RCLCPP_INFO(get_logger(), "Serial write %zu/%u bytes", written, len);
+        // 增加发送计数
+        tx_count_.fetch_add(1);
+        // RCLCPP_INFO(get_logger(), "Serial write %zu/%u bytes", written, len);
         if (written != len) {
             handle_serial_disconnect_locked("short write");
         }
@@ -340,6 +368,8 @@ void MavLink::receive_and_parse() {
             const size_t n = ros_ser_.available();
             if (n > 0) {
                 ros_ser_.read(buf, n);
+                // 增加接收计数（按字节数计算，但为了频率统计，我们按调用次数计算）
+                // 这里按每次receive_and_parse调用计数一次，因为可能一次读取多个字节
             }
         } catch (const std::exception& e) {
             handle_serial_disconnect_locked(e.what());
@@ -354,6 +384,8 @@ void MavLink::receive_and_parse() {
         for (uint8_t c : buf) {
             if (mavlink_parse_char(MAVLINK_COMM_0, c, &msg, &status)) {
                 parse_mavlink_msg(msg);
+                // 每成功解析一个完整的消息，增加接收计数
+                rx_count_.fetch_add(1);
             }
         }
     }

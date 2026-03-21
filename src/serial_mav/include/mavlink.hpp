@@ -49,6 +49,7 @@ private:
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg);
     void insta360_callback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
     void timer_callback();
+    void stats_callback();
 
     // 发布函数
     void publish_imu();
@@ -91,4 +92,12 @@ private:
         float yaw = 0, pitch = 0, wr = 0, distance = 0;
         int robot_id = 0;
     } last_state_;
+
+    // 频率统计相关成员变量
+    std::atomic<size_t> rx_count_{0};
+    std::atomic<size_t> tx_count_{0};
+    rclcpp::Time last_stats_time_;
+    double rx_frequency_{0.0};
+    double tx_frequency_{0.0};
+    rclcpp::TimerBase::SharedPtr stats_timer_;
 };
