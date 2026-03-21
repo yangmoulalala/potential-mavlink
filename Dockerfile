@@ -2,7 +2,8 @@ FROM ros:humble-ros-base
 
 RUN sudo apt update && \
     sudo apt install -y python3-pip curl wget  ros-humble-ament-cmake && \
-    sudo pip install rosdepc
+    sudo pip3 install --upgrade pip && \
+    sudo pip3 install rosdepc pyserial
 
 
 # setup zsh
@@ -12,15 +13,6 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -p https://github.com/zsh-users/zsh-syntax-highlighting && \
     chsh -s /bin/zsh
 
-# Install serial library (not available via rosdep in humble)
-RUN git clone https://github.com/ZhaoXiangBox/serial.git && \
-    cd serial && \
-    mkdir build && \
-    cd build && \
-    . /opt/ros/humble/setup.sh && \
-    cmake .. && \
-    make && \
-    sudo make install
 
 # Append ROS environment to .zshrc (append to existing zsh config)
 RUN echo '\n# ROS 2 Environment\n\
