@@ -84,11 +84,6 @@ class MavLinkNode(Node):
             '/mavlink/target_position',
             10,
         )
-        self.insta360_color_slot_pub = self.create_publisher(
-            Int32,
-            '/mavlink/insta360/color_slot',
-            10,
-        )
 
         self.target_timer = self.create_timer(0.1, self.publish_target_position)
         self.stats_timer = self.create_timer(1.0, self.stats_callback)
@@ -324,16 +319,13 @@ class MavLinkNode(Node):
         if msg_type == 'REFEREE':
             referee_msg = Float32MultiArray()
             referee_msg.data = [
+                float(mav_msg.is_red),
                 float(mav_msg.game_progress),
                 float(mav_msg.stage_remain_time),
-                float(mav_msg.is_red),
                 float(mav_msg.bullet_speed),
             ]
             self.referee_pub.publish(referee_msg)
 
-            color_msg = Int32()
-            color_msg.data = int(not bool(mav_msg.is_red))
-            self.insta360_color_slot_pub.publish(color_msg)
             return
 
         if msg_type == 'TARGET_POSITION':
