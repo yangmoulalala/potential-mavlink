@@ -1,7 +1,7 @@
 services:
   potential-mavlink:
-    image: potential-mavlink:0.0
-    container_name: potential-mavlink
+    image: potential-mavlink-py
+    container_name: potential-mavlink-py
     network_mode: host
     restart: always
     privileged: true

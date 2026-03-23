@@ -18,4 +18,4 @@ echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
 
 # run node
 # exec ros2 run serial_mav serial_mav_node "$@"
-exec ros2 run serial_mav_py mavlink_node "$@"
+exec ros2 run mavlink mavlink_node "$@"

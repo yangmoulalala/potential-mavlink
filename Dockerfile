@@ -1,7 +1,7 @@
 FROM ros:humble-ros-base
 
 RUN sudo apt update && \
-    sudo apt install -y python3-pip curl wget  ros-humble-ament-cmake && \
+    sudo apt install -y python3-pip curl wget  ros-humble-ament-cmake ros-humble-tf-transformations && \
     sudo pip3 install --upgrade pip && \
     sudo pip3 install rosdepc pyserial
 

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>serial_mav_py</name>
+  <name>mavlink</name>
   <version>0.0.1</version>
   <description>ROS2 Python package for MAVLink serial forwarding.</description>
 
@@ -14,9 +14,9 @@
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>tf2_ros</depend>
+  <exec_depend>tf-transformations</exec_depend>
   <depend>nav_msgs</depend>
-  <depend>pyserial</depend>
-  <depend>fastcrc</depend>
+  <exec_depend>python3-serial</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>
