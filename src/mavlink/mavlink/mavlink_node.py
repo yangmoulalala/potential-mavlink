@@ -16,7 +16,7 @@ from rm_interfaces.msg import Cboard, Referee
 
 import tf_transformations
 
-from . import mavlink
+import mavlink
 
 
 class MavLinkNode(Node):
@@ -232,15 +232,15 @@ class MavLinkNode(Node):
     # ---------------- MAVLink -> ROS ----------------
 
     def handle_mavlink_msg(self, mav_msg):
-        msg_id = mav_msg.get_msgId()
+        msg_type = mav_msg.get_type()
 
-        if msg_id == "MAVLINK_MSG_ID_IMU":
+        if msg_type == "IMU":
             self.publish_imu(mav_msg)
 
-        elif msg_id == "MAVLINK_MSG_ID_REFEREE":
+        elif msg_type == "REFEREE":
             self.publish_referee(mav_msg)
 
-        elif msg_id == "MAVLINK_MSG_ID_TARGET_POSITION":
+        elif msg_type == "TARGET_POSITION":
             p = Point()
             p.x = float(mav_msg.x)
             p.y = float(mav_msg.y)
