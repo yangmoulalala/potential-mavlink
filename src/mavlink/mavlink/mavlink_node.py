@@ -34,8 +34,8 @@ class MavLinkNode(Node):
 
         # Subscribers
         self.create_subscription(Cboard, "/vision/auto_aim", self.gimbal_callback, sensor_qos)
-        self.create_subscription(Twist, "/sentry/cmd_vel", self.cmd_vel_callback, 10)
-        self.create_subscription(Odometry, "/sentry/odometry", self.odom_callback, 10)
+        self.create_subscription(Twist, "/nav/cmd_vel", self.cmd_vel_callback, 10)
+        self.create_subscription(Odometry, "/nav/odometry", self.odom_callback, 10)
         self.create_subscription(Float32MultiArray, "/insta360/top3_angles", self.insta360_callback, 10)
 
 

@@ -1,18 +1,13 @@
 services:
   potential-mavlink:
-    image: potential-mavlink-py
-    container_name: potential-mavlink-py
+    image: potential-mavlink
+    container_name: potential-mavlink
     network_mode: host
     restart: always
     privileged: true
     environment:
-      - DISPLAY=${DISPLAY}
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
     volumes:
-      - .:/root/mavlink_ws/
-      - /dev/:/dev/
-    stdin_open: true
-    tty: true
-    group_add:
-      - dialout
+      - /dev:/dev
+      - ./src:/app/src

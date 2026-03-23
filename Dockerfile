@@ -1,46 +1,22 @@
 FROM ros:humble-ros-base
 
+# 安装环境
 RUN sudo apt update && \
-    sudo apt install -y python3-pip curl wget  ros-humble-ament-cmake ros-humble-tf-transformations && \
+    sudo apt install -y python3-pip curl wget ros-humble-ament-cmake ros-humble-tf-transformations && \
     sudo pip3 install --upgrade pip && \
     sudo pip3 install rosdepc pyserial
 
+# 更新~/.bashrc
+RUN echo '\nsource /opt/ros/humble/setup.bash\n\
+source /app/install/setup.bash' >> /root/.bashrc
 
-# setup zsh
-RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.2.1/zsh-in-docker.sh)" -- \
-    -t jispwoso -p git \
-    -p https://github.com/zsh-users/zsh-autosuggestions \
-    -p https://github.com/zsh-users/zsh-syntax-highlighting && \
-    chsh -s /bin/zsh
+# 设置工作目录和拷贝文件
+WORKDIR /app
+COPY ./src /app/src
+COPY ./start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+ENTRYPOINT ["/bin/bash", "/app/start.sh"]
 
-
-# Append ROS environment to .zshrc (append to existing zsh config)
-RUN echo '\n# ROS 2 Environment\n\
-source /opt/ros/humble/setup.zsh\n\
-source /root/mavlink_ws/install/setup.zsh\n\
-eval "$(register-python-argcomplete3 ros2)"\n\
-eval "$(register-python-argcomplete3 colcon)"' >> /root/.zshrc
-
-# Also setup .bashrc for compatibility
-RUN echo '\n# ROS 2 Environment\n\
-source /opt/ros/humble/setup.bash\n\
-source /root/mavlink_ws/install/setup.bash' >> /root/.bashrc
-
-# workspace
-WORKDIR /root/mavlink_ws
-
-# 复制整个仓库
-COPY . /root/mavlink_ws
-
+# 安装依赖
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
-    rosdepc install --from-paths src --ignore-src -r -y && \
-    colcon build --symlink-install"
-
-RUN chmod +x /root/mavlink_ws/start_serial_node.sh
-
-ENTRYPOINT ["/root/mavlink_ws/start_serial_node.sh"]
-
-# Set zsh as default shell
-RUN usermod -s /bin/zsh root
-
-RUN rm -rf /var/lib/apt/lists/*
+    rosdepc install --from-paths src --ignore-src -r -y"
