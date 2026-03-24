@@ -1,5 +1,6 @@
 services:
   potential-mavlink:
+    build: .
     image: potential-mavlink
     container_name: potential-mavlink
     network_mode: host
