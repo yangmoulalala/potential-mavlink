@@ -9,7 +9,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 import serial
 
 from sensor_msgs.msg import Imu
-from geometry_msgs.msg import Twist, Point, TransformStamped
+from geometry_msgs.msg import Twist, Point, TransformStamped, PoseStamped
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Float32MultiArray, Int32
 from rm_interfaces.msg import Cboard, Referee
@@ -31,6 +31,7 @@ class MavLinkNode(Node):
         self.referee_pub = self.create_publisher(Referee, "/mavlink/referee", 10)
         self.target_position_pub = self.create_publisher(Point, "/mavlink/target_position", 10)
         self.insta360_color_slot_pub = self.create_publisher(Int32, "/mavlink/insta360/color_slot", 10)
+        self.goal_pose_pub = self.create_publisher(PoseStamped, "/nav/goal_pose", 10)
 
         # Subscribers
         self.create_subscription(Cboard, "/vision/auto_aim", self.gimbal_callback, sensor_qos)
@@ -246,6 +247,20 @@ class MavLinkNode(Node):
             p.y = float(mav_msg.y)
             p.z = 0.0
             self.target_position_pub.publish(p)
+            
+            # # Publish goal_pose as PoseStamped
+            # goal_pose = PoseStamped()
+            # goal_pose.header.stamp = self.get_clock().now().to_msg()
+            # goal_pose.header.frame_id = "map"  # Assuming map frame for navigation goals
+            # goal_pose.pose.position.x = float(mav_msg.x)
+            # goal_pose.pose.position.y = float(mav_msg.y)
+            # goal_pose.pose.position.z = 0.0
+            # # Orientation is set to identity (no rotation)
+            # goal_pose.pose.orientation.x = 0.0
+            # goal_pose.pose.orientation.y = 0.0
+            # goal_pose.pose.orientation.z = 0.0
+            # goal_pose.pose.orientation.w = 1.0
+            # self.goal_pose_pub.publish(goal_pose)
 
     def publish_imu(self, mav_msg):
         roll = math.radians(float(mav_msg.roll))
